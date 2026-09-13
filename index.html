@@ -211,7 +211,6 @@
 
   <!-- Top Banner Header with Horizontal Logo -->
   <div class="top-bar">
-    <!-- Replace 'kb-horiz.png' with your actual image path if saved differently -->
     <img src="kb-horiz.png" alt="Kraken Beers Hockey">
   </div>
 
@@ -219,7 +218,6 @@
   <header>
     <!-- Mascot Graphic -->
     <div class="mascot-container">
-      <!-- Replace 'KRAKEN_UPDATE.png' with your mascot file name -->
       <img src="KRAKEN_UPDATE.png" alt="Kraken Beers Mascot">
     </div>
 
@@ -242,10 +240,8 @@
     <div class="grid">
       <div class="info-box">
         <h3>Upcoming Games</h3>
-        <ul>
-          <li><strong>Sun Oct 12:</strong> vs. Icebreakers @ 9:15 PM</li>
-          <li><strong>Sun Oct 19:</strong> vs. Beer Bears @ 10:30 PM</li>
-          <li><strong>Sun Oct 26:</strong> vs. Puck Hounds @ 8:00 PM</li>
+        <ul id="schedule-list">
+          <li>Loading schedule...</li>
         </ul>
       </div>
 
@@ -263,6 +259,35 @@
   <footer>
     &copy; Kraken Beers Hockey Club | KrakenBeersHockey.com
   </footer>
+
+  <!-- Dynamic Schedule Script -->
+  <script>
+    async function loadSchedule() {
+      const listEl = document.getElementById('schedule-list');
+      try {
+        const res = await fetch('schedule.json');
+        if (!res.ok) throw new Error('No schedule file found');
+        
+        const games = await res.json();
+        if (!games || !games.length) {
+          listEl.innerHTML = '<li>No upcoming games scheduled.</li>';
+          return;
+        }
+
+        listEl.innerHTML = games.map(game => `
+          <li>
+            <strong>${game.date_time}:</strong> 
+            ${game.home_team} vs. ${game.away_team} 
+            <br><small style="color: var(--text-muted);">@ ${game.location}</small>
+          </li>
+        `).join('');
+      } catch (err) {
+        listEl.innerHTML = '<li>Check back soon for updated game times.</li>';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadSchedule);
+  </script>
 
 </body>
 </html>
