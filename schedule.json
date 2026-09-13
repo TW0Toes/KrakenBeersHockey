@@ -1,18 +1,18 @@
 {
   "last_game": {
-    "date": "Final",
-    "home_team": "",
-    "away_team": "HC F",
-    "status": "247",
-    "location": "Kraken Beers KRA F"
+    "home_team": "F",
+    "away_team": "F",
+    "home_score": "6",
+    "away_score": "2",
+    "location": "WSA Canada Rink"
   },
   "upcoming_games": [
     {
-      "date": "7:55 PM",
-      "time": "264",
-      "home_team": "",
-      "away_team": "F",
-      "location": "Hurricanes HUR F"
+      "date": "Sun Sep 13, 2026",
+      "time": "7:55 PM",
+      "home_team": "Hurricanes F",
+      "away_team": "Kraken Beers",
+      "location": "Playland"
     }
   ]
 }
