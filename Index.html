@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Kraken Beers Hockey Club</title>
+  
+  <!-- Team Fonts: Teko (Aggressive Sports/Jerseys) & Montserrat (Clean Body Text) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&family=Teko:wght@600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --kraken-red: #d90429;
+      --kraken-dark-red: #8d0801;
+      --kraken-black: #0d0d0d;
+      --card-bg: #161616;
+      --accent-blue: #00b4d8;
+      --text-light: #f8f9fa;
+      --text-muted: #b0b0b0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background-color: var(--kraken-black);
+      color: var(--text-light);
+      line-height: 1.5;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* Top Navigation / Brand Bar */
+    .top-bar {
+      background-color: #000000;
+      padding: 15px 20px;
+      text-align: center;
+      border-bottom: 2px solid var(--kraken-red);
+    }
+
+    .top-bar img {
+      max-height: 60px;
+      width: auto;
+    }
+
+    /* Hero Banner */
+    header {
+      background: radial-gradient(circle at center, #222222 0%, var(--kraken-black) 80%);
+      text-align: center;
+      padding: 50px 20px 60px;
+      border-bottom: 4px solid var(--kraken-red);
+      position: relative;
+    }
+
+    .mascot-container {
+      margin: 0 auto 20px;
+    }
+
+    .mascot-container img {
+      max-width: 240px;
+      height: auto;
+      filter: drop-shadow(0px 10px 15px rgba(217, 4, 41, 0.3));
+    }
+
+    .hero-title {
+      font-family: 'Teko', sans-serif;
+      font-size: 4.5rem;
+      text-transform: uppercase;
+      line-height: 0.9;
+      letter-spacing: 2px;
+      color: #ffffff;
+      text-shadow: 2px 2px 0px #000, -2px -2px 0px #000, 2px -2px 0px #000, -2px 2px 0px #000;
+    }
+
+    .hero-title span {
+      color: var(--kraken-red);
+    }
+
+    .tagline {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-top: 10px;
+      margin-bottom: 35px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Store / Merch Drop Card */
+    .shop-card {
+      background-color: var(--card-bg);
+      max-width: 650px;
+      margin: 0 auto;
+      padding: 35px 25px;
+      border-radius: 8px;
+      border: 2px solid var(--kraken-red);
+      box-shadow: 0 0 20px rgba(217, 4, 41, 0.25);
+    }
+
+    .shop-card h2 {
+      font-family: 'Teko', sans-serif;
+      font-size: 2.8rem;
+      text-transform: uppercase;
+      color: #fff;
+      letter-spacing: 1px;
+      line-height: 1;
+      margin-bottom: 10px;
+    }
+
+    .shop-card p {
+      color: var(--text-muted);
+      margin-bottom: 25px;
+      font-size: 1rem;
+    }
+
+    .cta-button {
+      display: inline-block;
+      background-color: var(--kraken-red);
+      color: #ffffff;
+      font-family: 'Teko', sans-serif;
+      font-size: 1.8rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      text-decoration: none;
+      padding: 12px 36px;
+      border-radius: 4px;
+      border: 2px solid #ffffff;
+      transition: all 0.2s ease-in-out;
+      box-shadow: 0 4px 15px rgba(217, 4, 41, 0.5);
+    }
+
+    .cta-button:hover {
+      background-color: #ffffff;
+      color: var(--kraken-red);
+      border-color: var(--kraken-red);
+      transform: translateY(-3px);
+      box-shadow: 0 6px 20px rgba(255, 255, 255, 0.4);
+    }
+
+    /* Content Area */
+    main {
+      max-width: 950px;
+      margin: 40px auto;
+      padding: 0 20px;
+      flex-grow: 1;
+      width: 100%;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 25px;
+    }
+
+    .info-box {
+      background-color: var(--card-bg);
+      padding: 30px;
+      border-radius: 8px;
+      border-left: 4px solid var(--kraken-red);
+    }
+
+    .info-box h3 {
+      font-family: 'Teko', sans-serif;
+      font-size: 2.2rem;
+      color: #ffffff;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 15px;
+      line-height: 1;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 8px;
+    }
+
+    .info-box ul {
+      list-style: none;
+    }
+
+    .info-box li {
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.95rem;
+    }
+
+    .info-box li:last-child {
+      border-bottom: none;
+    }
+
+    .info-box li strong {
+      color: var(--kraken-red);
+    }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      padding: 30px 20px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      background-color: #000000;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Banner Header with Horizontal Logo -->
+  <div class="top-bar">
+    <!-- Replace 'kb-horiz.jpg' with your actual image path if saved differently -->
+    <img src="kb-horiz.jpg" alt="Kraken Beers Hockey">
+  </div>
+
+  <!-- Hero Section -->
+  <header>
+    <!-- Mascot Graphic -->
+    <div class="mascot-container">
+      <!-- Replace 'KRAKEN_UPDATE.jpg' with your mascot file name -->
+      <img src="KRAKEN_UPDATE.jpg" alt="Kraken Beers Mascot">
+    </div>
+
+    <h1 class="hero-title">Kraken <span>Beers</span> HC</h1>
+    <p class="tagline">Work hard &bull; Skate fast &bull; Drink cold</p>
+
+    <!-- Drop Ship Gear Shop CTA -->
+    <div class="shop-card">
+      <h2>Official Team Store</h2>
+      <p>Get your official Kraken Beers team jerseys, hoodies, and apparel powered by Underground Printing. Items drop ship straight to your door.</p>
+      <!-- PASTE YOUR UNDERGROUND PRINTING LINK HERE -->
+      <a href="YOUR_UNDERGROUND_PRINTING_STORE_URL_HERE" target="_blank" rel="noopener noreferrer" class="cta-button">
+        Shop Team Gear &rarr;
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Info Section -->
+  <main>
+    <div class="grid">
+      <div class="info-box">
+        <h3>Upcoming Games</h3>
+        <ul>
+          <li><strong>Sun Oct 12:</strong> vs. Icebreakers @ 9:15 PM</li>
+          <li><strong>Sun Oct 19:</strong> vs. Beer Bears @ 10:30 PM</li>
+          <li><strong>Sun Oct 26:</strong> vs. Puck Hounds @ 8:00 PM</li>
+        </ul>
+      </div>
+
+      <div class="info-box">
+        <h3>Team News</h3>
+        <ul>
+          <li><strong>Store Live:</strong> Drop ship ordering is officially open on Underground Printing.</li>
+          <li><strong>Locker Room:</strong> Arrive 30 minutes prior to game time.</li>
+        </ul>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    &copy; Kraken Beers Hockey Club | KrakenBeersHockey.com
+  </footer>
+
+</body>
+</html>
