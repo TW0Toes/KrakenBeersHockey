@@ -15,9 +15,9 @@ headers = {
 
 
 def clean_team_name(name):
-  """Generically strips team code suffixes (e.g., 'Kraken Beers KRA F' -> 'Kraken Beers',
+  """Generically strips team code suffixes (e.g.
 
-  'Hurricanes HUR F' -> 'Hurricanes', 'Wolves HC WOL F' -> 'Wolves HC').
+  'Kraken Beers KRA F' -> 'Kraken Beers', 'Hurricanes HUR F' -> 'Hurricanes').
   """
   if not name:
     return ''
@@ -44,24 +44,36 @@ def run_scraper():
   upcoming_games = []
   rows = soup.find_all('tr')
 
+  current_date = ''  # Track date across row iterations
+
   for row in rows:
     cols = [
         re.sub(r'\s+', ' ', td.text).strip()
         for td in row.find_all(['td', 'th'])
     ]
+    row_text = ' '.join(cols).strip()
+
+    # Search for date pattern across any table row (e.g., "Sun Sep 13", "Sun Sep 13, 2026", "09/13/2026")
+    date_match = re.search(
+        r'\b(Sun|Mon|Tue|Wed|Thu|Fri|Sat)?\s*([A-Za-z]{3}\s+\d{1,2}|\d{1,2}/\d{1,2})(,\s*\d{4})?\b',
+        row_text,
+        re.IGNORECASE,
+    )
+    if date_match:
+      current_date = date_match.group(0).strip()
 
     # Ignore layout rows without enough columns
     if len(cols) < 5:
       continue
 
-    row_text = ' '.join(cols).upper()
+    row_upper = row_text.upper()
 
-    # Skip header rows and past final games
+    # Skip header rows and completed past games
     if (
-        'RESULT' in row_text
-        or 'GAME #' in row_text
-        or 'VISITOR' in row_text
-        or 'FINAL' in row_text
+        'RESULT' in row_upper
+        or 'GAME #' in row_upper
+        or 'VISITOR' in row_upper
+        or 'FINAL' in row_upper
     ):
       continue
 
@@ -70,13 +82,6 @@ def run_scraper():
     # Process rows with valid game times
     if 'PM' in col_0.upper() or 'AM' in col_0.upper():
       time_str = col_0
-
-      # Extract date string generically (e.g. "Sun Sep 13", "09/13/2026")
-      date_match = re.search(
-          r'(Sun|Mon|Tue|Wed|Thu|Fri|Sat)?\s*([A-Za-z]{3}\s+\d{1,2}|\d{1,2}/\d{1,2})',
-          row_text,
-      )
-      date_str = date_match.group(0) if date_match else ''
 
       # Dynamically map and clean team columns
       raw_team_1 = cols[2] if len(cols) > 2 else ''
@@ -96,7 +101,7 @@ def run_scraper():
           break
 
       upcoming_games.append({
-          'date': date_str,
+          'date': current_date,
           'time': time_str,
           'home_team': team_2_clean,
           'away_team': team_1_clean,
@@ -108,7 +113,9 @@ def run_scraper():
   with open('schedule.json', 'w') as f:
     json.dump(output, f, indent=2)
 
-  print(f'Done! Successfully saved {len(upcoming_games)} upcoming game(s).')
+  print(
+      f'Done! Successfully saved {len(upcoming_games)} upcoming game(s) with dates.'
+  )
 
 
 if __name__ == '__main__':
