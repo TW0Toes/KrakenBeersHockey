@@ -54,24 +54,30 @@
     header {
       background: radial-gradient(circle at center, #222222 0%, var(--kraken-black) 80%);
       text-align: center;
-      padding: 50px 20px 60px;
+      padding: 60px 20px 70px;
       border-bottom: 4px solid var(--kraken-red);
       position: relative;
     }
 
+    /* Enlarged Mascot Image Container */
     .mascot-container {
-      margin: 0 auto 20px;
+      margin: 0 auto 25px;
+      width: 100%;
+      max-width: 1000px;
     }
 
     .mascot-container img {
-      max-width: 240px;
+      width: 100%;
+      max-width: 380px; /* Scaled up for prominent display */
       height: auto;
-      filter: drop-shadow(0px 10px 15px rgba(217, 4, 41, 0.3));
+      display: block;
+      margin: 0 auto;
+      filter: drop-shadow(0px 12px 20px rgba(217, 4, 41, 0.4));
     }
 
     .hero-title {
       font-family: 'Teko', sans-serif;
-      font-size: 4.5rem;
+      font-size: 5rem;
       text-transform: uppercase;
       line-height: 0.9;
       letter-spacing: 2px;
@@ -84,7 +90,7 @@
     }
 
     .tagline {
-      font-size: 1.1rem;
+      font-size: 1.15rem;
       font-weight: 600;
       color: var(--text-muted);
       margin-top: 10px;
@@ -146,29 +152,23 @@
 
     /* Content Area */
     main {
-      max-width: 950px;
+      max-width: 750px;
       margin: 40px auto;
       padding: 0 20px;
       flex-grow: 1;
       width: 100%;
     }
 
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 25px;
-    }
-
     .info-box {
       background-color: var(--card-bg);
-      padding: 30px;
+      padding: 35px;
       border-radius: 8px;
       border-left: 4px solid var(--kraken-red);
     }
 
     .info-box h3 {
       font-family: 'Teko', sans-serif;
-      font-size: 2.2rem;
+      font-size: 2.4rem;
       color: #ffffff;
       text-transform: uppercase;
       letter-spacing: 1px;
@@ -178,22 +178,37 @@
       padding-bottom: 8px;
     }
 
-    .info-box ul {
-      list-style: none;
+    /* 3-Row Upcoming Game Cards */
+    .game-card {
+      padding: 16px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     }
 
-    .info-box li {
-      padding: 10px 0;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
-      font-size: 0.95rem;
-    }
-
-    .info-box li:last-child {
+    .game-card:last-child {
       border-bottom: none;
     }
 
-    .info-box li strong {
+    .game-row {
+      display: block;
+      line-height: 1.4;
+    }
+
+    .date-row {
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: #ffffff;
+    }
+
+    .match-row {
+      font-size: 1.25rem;
+      font-weight: 800;
       color: var(--kraken-red);
+      margin: 2px 0;
+    }
+
+    .details-row {
+      font-size: 0.95rem;
+      color: var(--text-muted);
     }
 
     /* Footer */
@@ -216,7 +231,7 @@
 
   <!-- Hero Section -->
   <header>
-    <!-- Mascot Graphic -->
+    <!-- Mascot Graphic (Enlarged) -->
     <div class="mascot-container">
       <img src="KRAKEN_UPDATE.png" alt="Kraken Beers Mascot">
     </div>
@@ -228,32 +243,17 @@
     <div class="shop-card">
       <h2>Official Team Store</h2>
       <p>Get your official Kraken Beers team jerseys, hoodies, and apparel powered by Underground Printing. Items drop ship straight to your door.</p>
-      <!-- PASTE YOUR UNDERGROUND PRINTING LINK HERE -->
       <a href="YOUR_UNDERGROUND_PRINTING_STORE_URL_HERE" target="_blank" rel="noopener noreferrer" class="cta-button">
         Shop Team Gear &rarr;
       </a>
     </div>
   </header>
 
-  <!-- Main Info Section -->
+  <!-- Main Schedule Section -->
   <main>
-    <div class="grid">
-      <!-- Dynamic Schedule Box -->
-      <div class="info-box" id="schedule-box">
-        <h3>Upcoming Games</h3>
-        <ul id="schedule-list">
-          <li>Loading schedule...</li>
-        </ul>
-      </div>
-
-      <!-- Static Team News Box -->
-      <div class="info-box">
-        <h3>Team News</h3>
-        <ul>
-          <li><strong>Store Live:</strong> Drop ship ordering is officially open on Underground Printing.</li>
-          <li><strong>Locker Room:</strong> Arrive 30 minutes prior to game time.</li>
-        </ul>
-      </div>
+    <div class="info-box" id="schedule-box">
+      <h3>Schedule</h3>
+      <p style="color: var(--text-muted);">Loading schedule...</p>
     </div>
   </main>
 
@@ -275,7 +275,7 @@
         const data = await res.json();
         let htmlContent = '';
 
-        // 1. Render Last Game Section if available
+        // 1. Render Last Game Section
         if (data.last_game) {
           const lg = data.last_game;
           let scoreDisplay = '';
@@ -288,34 +288,35 @@
 
           htmlContent += `
             <h3>Last Game</h3>
-            <ul style="margin-bottom: 25px;">
-              <li><strong>Final:</strong> ${scoreDisplay}</li>
-            </ul>
+            <div style="margin-bottom: 25px;">
+              <span style="font-size: 1.1rem; font-weight: 700;">Final:</span> ${scoreDisplay}
+            </div>
           `;
         }
 
-        // 2. Render Upcoming Games Section (Dynamically scales for 1 or 20 games)
-        htmlContent += `<h3>Upcoming Games</h3><ul id="schedule-list">`;
+        // 2. Render Upcoming Games Section (3 distinct rows per game)
+        htmlContent += `<h3>Next</h3><div id="schedule-list">`;
 
         if (data.upcoming_games && data.upcoming_games.length > 0) {
           htmlContent += data.upcoming_games.map(game => `
-            <li>
-              <strong>${game.date}:</strong> ${game.away_team} at ${game.home_team}
-              <br><small style="color: var(--text-muted);">${game.time} - ${game.location}</small>
-            </li>
+            <div class="game-card">
+              <span class="game-row date-row">${game.date}</span>
+              <span class="game-row match-row">${game.away_team} at ${game.home_team}</span>
+              <span class="game-row details-row">${game.time} - ${game.location}</span>
+            </div>
           `).join('');
         } else {
-          htmlContent += `<li>No upcoming games scheduled.</li>`;
+          htmlContent += `<p style="color: var(--text-muted);">No upcoming games scheduled.</p>`;
         }
 
-        htmlContent += `</ul>`;
+        htmlContent += `</div>`;
         scheduleBox.innerHTML = htmlContent;
 
       } catch (err) {
         console.error(err);
         scheduleBox.innerHTML = `
-          <h3>Upcoming Games</h3>
-          <ul><li>Check back soon for updated game times.</li></ul>
+          <h3>Schedule</h3>
+          <p style="color: var(--text-muted);">Check back soon for updated game times.</p>
         `;
       }
     }
