@@ -238,13 +238,15 @@
   <!-- Main Info Section -->
   <main>
     <div class="grid">
-      <div class="info-box">
+      <!-- Dynamic Schedule Box -->
+      <div class="info-box" id="schedule-box">
         <h3>Upcoming Games</h3>
         <ul id="schedule-list">
           <li>Loading schedule...</li>
         </ul>
       </div>
 
+      <!-- Static Team News Box -->
       <div class="info-box">
         <h3>Team News</h3>
         <ul>
@@ -260,33 +262,39 @@
     &copy; Kraken Beers Hockey Club | KrakenBeersHockey.com
   </footer>
 
-<!-- Dynamic Schedule Script -->
+  <!-- Dynamic Schedule Script -->
   <script>
     async function loadSchedule() {
-      const scheduleContainer = document.querySelector('.info-box');
-      
+      const scheduleBox = document.getElementById('schedule-box');
+      if (!scheduleBox) return;
+
       try {
         const res = await fetch('schedule.json');
-        if (!res.ok) throw new Error('No schedule file found');
+        if (!res.ok) throw new Error('No schedule found');
         
         const data = await res.json();
-
         let htmlContent = '';
 
         // 1. Render Last Game Section if available
         if (data.last_game) {
           const lg = data.last_game;
+          let scoreDisplay = '';
+          
+          if (lg.home_team && lg.away_team) {
+            scoreDisplay = `${lg.home_team}: ${lg.home_score} &nbsp;&bull;&nbsp; ${lg.away_team}: ${lg.away_score}`;
+          } else {
+            scoreDisplay = lg.summary || lg.raw_status || 'Final';
+          }
+
           htmlContent += `
             <h3>Last Game</h3>
             <ul style="margin-bottom: 25px;">
-              <li>
-                <strong>Final:</strong> ${lg.home_team}: ${lg.home_score || ''} &nbsp;&bull;&nbsp; ${lg.away_team}: ${lg.away_score || ''}
-              </li>
+              <li><strong>Final:</strong> ${scoreDisplay}</li>
             </ul>
           `;
         }
 
-        // 2. Render Upcoming Games Section
+        // 2. Render Upcoming Games Section (Dynamically scales for 1 or 20 games)
         htmlContent += `<h3>Upcoming Games</h3><ul id="schedule-list">`;
 
         if (data.upcoming_games && data.upcoming_games.length > 0) {
@@ -301,12 +309,14 @@
         }
 
         htmlContent += `</ul>`;
-
-        // Inject compiled HTML into the box
-        scheduleContainer.innerHTML = htmlContent;
+        scheduleBox.innerHTML = htmlContent;
 
       } catch (err) {
         console.error(err);
+        scheduleBox.innerHTML = `
+          <h3>Upcoming Games</h3>
+          <ul><li>Check back soon for updated game times.</li></ul>
+        `;
       }
     }
 
