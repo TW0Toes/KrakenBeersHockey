@@ -260,29 +260,53 @@
     &copy; Kraken Beers Hockey Club | KrakenBeersHockey.com
   </footer>
 
-  <!-- Dynamic Schedule Script -->
+<!-- Dynamic Schedule Script -->
   <script>
     async function loadSchedule() {
-      const listEl = document.getElementById('schedule-list');
+      const scheduleContainer = document.querySelector('.info-box');
+      
       try {
         const res = await fetch('schedule.json');
         if (!res.ok) throw new Error('No schedule file found');
         
-        const games = await res.json();
-        if (!games || !games.length) {
-          listEl.innerHTML = '<li>No upcoming games scheduled.</li>';
-          return;
+        const data = await res.json();
+
+        let htmlContent = '';
+
+        // 1. Render Last Game Section if available
+        if (data.last_game) {
+          const lg = data.last_game;
+          htmlContent += `
+            <h3>Last Game</h3>
+            <ul style="margin-bottom: 25px;">
+              <li>
+                <strong>Final:</strong> ${lg.home_team}: ${lg.home_score || ''} &nbsp;&bull;&nbsp; ${lg.away_team}: ${lg.away_score || ''}
+              </li>
+            </ul>
+          `;
         }
 
-        listEl.innerHTML = games.map(game => `
-          <li>
-            <strong>${game.date_time}:</strong> 
-            ${game.home_team} vs. ${game.away_team} 
-            <br><small style="color: var(--text-muted);">@ ${game.location}</small>
-          </li>
-        `).join('');
+        // 2. Render Upcoming Games Section
+        htmlContent += `<h3>Upcoming Games</h3><ul id="schedule-list">`;
+
+        if (data.upcoming_games && data.upcoming_games.length > 0) {
+          htmlContent += data.upcoming_games.map(game => `
+            <li>
+              <strong>${game.date}:</strong> ${game.away_team} at ${game.home_team}
+              <br><small style="color: var(--text-muted);">${game.time} - ${game.location}</small>
+            </li>
+          `).join('');
+        } else {
+          htmlContent += `<li>No upcoming games scheduled.</li>`;
+        }
+
+        htmlContent += `</ul>`;
+
+        // Inject compiled HTML into the box
+        scheduleContainer.innerHTML = htmlContent;
+
       } catch (err) {
-        listEl.innerHTML = '<li>Check back soon for updated game times.</li>';
+        console.error(err);
       }
     }
 
