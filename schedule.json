@@ -1,16 +1,15 @@
 {
   "last_game": {
-    "home_team": "F",
-    "away_team": "F",
-    "home_score": "6",
-    "away_score": "2",
-    "location": "WSA Canada Rink"
+    "home_team": "Kraken Beers",
+    "away_team": "Wolves HC",
+    "home_score": "2",
+    "away_score": "6"
   },
   "upcoming_games": [
     {
       "date": "Sun Sep 13, 2026",
       "time": "7:55 PM",
-      "home_team": "Hurricanes F",
+      "home_team": "Hurricanes",
       "away_team": "Kraken Beers",
       "location": "Playland"
     }
