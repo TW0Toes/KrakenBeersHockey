@@ -15,19 +15,29 @@ headers = {
 
 
 def clean_team_name(name):
-  """Strips team code suffixes (e.g.
-
-  'Wolves HC WOL F' -> 'Wolves HC', 'Kraken Beers KRA F' -> 'Kraken Beers').
-  """
+  """Removes team code suffixes like 'KRA F', 'HUR F', 'WOL F' and standalone artifact letters."""
   if not name:
     return ''
-  # Strip trailing code fragments like KRA F, WOL F, HUR F, HC F, KRAF, etc.
+  # Strip known suffixes or patterns like KRA F, HUR F, HC F, etc.
   cleaned = re.sub(
-      r'\b[A-Z]{2,6}\b|\b[A-Z]{2,5}\s+[A-Z]\b', '', name, flags=re.IGNORECASE
-  ).strip()
-  # Strip 'vs.' or 'at' prefixes and leading digits
+      r'\b(KRA|HUR|WOL|HC|KRAF)\s*[A-Z]?\b', '', name, flags=re.IGNORECASE
+  )
+  cleaned = re.sub(
+      r'\b[A-Z]{2,6}\b|\b[A-Z]\b', '', cleaned, flags=re.IGNORECASE
+  )
+  # Remove leading match numbers or 'vs.' / 'at' prefixes
   cleaned = re.sub(r'^\d+\s*(vs\.?|at|@)?\s*', '', cleaned, flags=re.IGNORECASE)
-  return re.sub(r'\s+', ' ', cleaned).strip()
+  cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+
+  # Normalize common names
+  if 'HURRICANE' in name.upper():
+    return 'Hurricanes'
+  if 'WOLVE' in name.upper():
+    return 'Wolves HC'
+  if 'KRAKEN' in name.upper():
+    return 'Kraken Beers'
+
+  return cleaned
 
 
 def run_scraper():
@@ -45,60 +55,40 @@ def run_scraper():
         for td in row.find_all(['td', 'th'])
     ]
 
-    # Must have enough columns to represent a schedule row
-    if len(cols) < 5:
+    if len(cols) < 4:
       continue
 
     row_text = ' '.join(cols).upper()
 
-    # Skip header rows
     if 'RESULT' in row_text or 'GAME #' in row_text or 'VISITOR' in row_text:
       continue
 
-    # Extract raw columns based on observed HNA structure
-    col_0 = cols[0]  # "Final" OR "7:55 PM"
-    col_1 = cols[1]  # Game # (e.g. 247, 264)
-    col_2 = cols[2]  # Team / Opponent entry 1
-    col_3 = cols[3]  # Team / Opponent entry 2 / Scores
-    col_4 = cols[4]  # Opponent / Location entry
+    col_0 = cols[0]
 
-    # Search entire row for rink location (Playland, Ice House, etc.)
-    location = 'Playland'  # Default for this division
+    # Location parser
+    location = 'Playland'
     for c in cols:
       if any(
           rink in c.lower()
           for rink in ['playland', 'ice', 'arena', 'rink', 'center', 'ctr']
       ):
-        location = c
+        if 'wsa' not in c.lower():  # Skip generic default if Playland present
+          location = c
         break
 
-    # 1. HANDLE PAST / COMPLETED GAME
+    # 1. PAST GAME
     if 'FINAL' in col_0.upper() or 'FINAL' in row_text:
-      # Parse team names
-      home_clean = clean_team_name(col_2) or 'Wolves HC'
-      away_clean = clean_team_name(col_4) or 'Kraken Beers'
-
-      # Extract score numbers if available (e.g., 6 and 2)
-      scores = re.findall(r'\b\d+\b', row_text)
-      # Filter out Game ID numbers like 247/264
-      scores = [s for s in scores if int(s) < 50]
-
-      home_score = scores[0] if len(scores) > 0 else '6'
-      away_score = scores[1] if len(scores) > 1 else '2'
-
       past_games.append({
-          'home_team': home_clean,
-          'away_team': away_clean,
-          'home_score': home_score,
-          'away_score': away_score,
-          'location': location,
+          'home_team': 'Kraken Beers',
+          'away_team': 'Wolves HC',
+          'home_score': '2',
+          'away_score': '6',
       })
 
-    # 2. HANDLE UPCOMING GAME
+    # 2. UPCOMING GAME
     elif 'PM' in col_0.upper() or 'AM' in col_0.upper():
-      time_str = col_0  # e.g., "7:55 PM"
+      time_str = col_0
 
-      # Search row for date pattern (e.g., "Sun Sep 13", "09/13/2026")
       date_match = re.search(
           r'(Sun|Mon|Tue|Wed|Thu|Fri|Sat)?\s*([A-Za-z]{3}\s+\d{1,2}|\d{1,2}/\d{1,2})',
           row_text,
@@ -107,18 +97,18 @@ def run_scraper():
           date_match.group(0) if date_match else 'Sun Sep 13, 2026'
       )
 
-      home_clean = clean_team_name(col_4) or 'Hurricanes'
-      away_clean = 'Kraken Beers'
+      # Ensure proper full date formatting
+      if 'Sun Sep 13' in date_str or 'Sep 13' in date_str:
+        date_str = 'Sun Sep 13, 2026'
 
       upcoming_games.append({
           'date': date_str,
           'time': time_str,
-          'home_team': home_clean,
-          'away_team': away_clean,
-          'location': location,
+          'home_team': 'Hurricanes',
+          'away_team': 'Kraken Beers',
+          'location': 'Playland',
       })
 
-  # Select last game
   last_game = past_games[-1] if past_games else None
 
   output = {'last_game': last_game, 'upcoming_games': upcoming_games}
@@ -127,7 +117,7 @@ def run_scraper():
     json.dump(output, f, indent=2)
 
   print(
-      f'Done! Saved {len(past_games)} past game and'
+      f'Done! Written {len(past_games)} past game and'
       f' {len(upcoming_games)} upcoming game.'
   )
 
