@@ -1,4 +1,33 @@
 {
   "last_game": null,
-  "upcoming_games": []
+  "upcoming_games": [
+    {
+      "date": "Result",
+      "time": "",
+      "home_team": "Away",
+      "away_team": "#",
+      "location": "Home"
+    },
+    {
+      "date": "Final",
+      "time": "6",
+      "home_team": "Wolves HC WOL F",
+      "away_team": "",
+      "location": "Kraken Beers KRA F"
+    },
+    {
+      "date": "Time",
+      "time": "",
+      "home_team": "Away",
+      "away_team": "#",
+      "location": "Home"
+    },
+    {
+      "date": "7:55 PM",
+      "time": "",
+      "home_team": "Kraken Beers KRA F",
+      "away_team": "",
+      "location": "Hurricanes HUR F"
+    }
+  ]
 }
