@@ -3,103 +3,96 @@ import re
 from bs4 import BeautifulSoup
 import requests
 
-# Direct schedule endpoint for HNA League ID 25148
-URL = 'https://www.hna.com/leagues/sched_action.cfm?clientCode=HNA&leagueID=25148&levelID=0'
+# HNA Schedule Direct Endpoint
+URL = 'https://www.hna.com/leagues/sched_action.cfm?clientCode=HNA&leagueID=25148&levelID=0&printable=1'
 
 headers = {
     'User-Agent': (
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
         'AppleWebKit/537.36 (KHTML, like Gecko) '
         'Chrome/120.0.0.0 Safari/537.36'
-    )
+    ),
+    'Accept': (
+        'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+    ),
 }
 
 
 def clean_team_name(name):
-  """Removes team code suffixes (e.g., 'Wolves HCWOLF' -> 'Wolves HC', 'Kraken BeersKRAF' -> 'Kraken Beers')."""
+  """Cleans team names by removing team code suffixes (e.g.
+
+  'Wolves HCWOLF' -> 'Wolves HC') and game numbers.
+  """
   if not name:
     return ''
-  # Strip trailing 3-6 letter uppercase codes (e.g. HCWOLF, KRAF)
+  # Strip trailing 3-6 uppercase letters (league team codes like KRAF, HCWOLF)
   cleaned = re.sub(r'([a-zA-Z0-9\s]+?)([A-Z]{3,6})$', r'\1', name).strip()
-  # Remove leading match numbers or 'vs.' prefixes if present
-  cleaned = re.sub(r'^\d+\s*(vs\.?|@)?\s*', '', cleaned, flags=re.IGNORECASE)
+  # Remove leading digits or vs/at prefixes
+  cleaned = re.sub(r'^\d+\s*(vs\.?|at|@)?\s*', '', cleaned, flags=re.IGNORECASE)
   return cleaned.strip()
 
 
 def run_scraper():
-  session = requests.Session()
-  # First hit the main page to establish any required session cookies
-  session.get(
-      'https://www.hna.com/leagues/front_pageHNA.cfm?clientCode=HNA&leagueID=25148',
-      headers=headers,
-  )
-
-  # Fetch the actual schedule content
-  res = session.get(URL, headers=headers)
+  print('Fetching schedule from HNA printable view...')
+  res = requests.get(URL, headers=headers)
   soup = BeautifulSoup(res.text, 'html.parser')
 
   past_games = []
   upcoming_games = []
 
-  # Find all table cells / rows
+  # Find all table rows across the document
   rows = soup.find_all('tr')
-  print(f'Inspecting {len(rows)} rows from schedule endpoint...')
+  print(f'Total rows inspected: {len(rows)}')
 
   for row in rows:
-    cols = [
+    # Extract cell text
+    cells = [
         re.sub(r'\s+', ' ', td.text).strip()
         for td in row.find_all(['td', 'th'])
     ]
+    row_text = ' '.join(cells).upper()
 
-    if len(cols) < 4:
-      continue
+    # Search for team identifier
+    if 'KRAKEN' in row_text or 'KRAF' in row_text:
+      print(f'Found Kraken Row: {cells}')
 
-    row_text = ' '.join(cols).upper()
+      # Format: [Date, Away/Visitor, Home, Score/Time, Location]
+      if len(cells) >= 4:
+        date_str = cells[0]
+        away_raw = cells[1] if len(cells) > 1 else ''
+        home_raw = cells[2] if len(cells) > 2 else ''
+        time_or_score = cells[3] if len(cells) > 3 else ''
+        location = cells[4] if len(cells) > 4 else ''
 
-    # Filter for Kraken Beers or team code KRAF
-    if 'KRAKEN' not in row_text and 'KRAF' not in row_text:
-      continue
+        away_clean = clean_team_name(away_raw)
+        home_clean = clean_team_name(home_raw)
 
-    print(f'Matched Row: {cols}')
+        if 'FINAL' in time_or_score.upper() or '-' in time_or_score:
+          past_games.append({
+              'date': date_str,
+              'home_team': home_clean,
+              'away_team': away_clean,
+              'score_status': time_or_score,
+              'location': location,
+          })
+        else:
+          upcoming_games.append({
+              'date': date_str,
+              'time': time_or_score,
+              'home_team': home_clean,
+              'away_team': away_clean,
+              'location': location,
+          })
 
-    # Typical column layout: [Date, Visitor/Away, Home, Score/Time, Location]
-    date_str = cols[0]
-    away_raw = cols[1] if len(cols) > 1 else ''
-    home_raw = cols[2] if len(cols) > 2 else ''
-    status_time = cols[3] if len(cols) > 3 else ''
-    location = cols[4] if len(cols) > 4 else ''
-
-    away_clean = clean_team_name(away_raw)
-    home_clean = clean_team_name(home_raw)
-
-    # Check if completed game (contains FINAL or a dash score line)
-    if 'FINAL' in status_time.upper() or '-' in status_time:
-      past_games.append({
-          'date': date_str,
-          'home_team': home_clean,
-          'away_team': away_clean,
-          'score_status': status_time,
-          'location': location,
-      })
-    else:
-      upcoming_games.append({
-          'date': date_str,
-          'time': status_time,
-          'home_team': home_clean,
-          'away_team': away_clean,
-          'location': location,
-      })
-
-  # Select last game
+  # Structure output
   last_game = past_games[-1] if past_games else None
-
   output = {'last_game': last_game, 'upcoming_games': upcoming_games}
 
   with open('schedule.json', 'w') as f:
     json.dump(output, f, indent=2)
 
   print(
-      f'Done! Saved {len(past_games)} past games and'
+      f'Success: Saved {len(past_games)} past games and'
       f' {len(upcoming_games)} upcoming games to schedule.json.'
   )
 
