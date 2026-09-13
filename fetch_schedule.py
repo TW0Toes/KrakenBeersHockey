@@ -3,7 +3,7 @@ import re
 from bs4 import BeautifulSoup
 import requests
 
-# Direct schedule URL for HNA League ID 25148
+# HNA Direct Schedule Endpoint
 URL = 'https://www.hna.com/leagues/sched_action.cfm?clientCode=HNA&leagueID=25148&levelID=0'
 
 headers = {
@@ -15,29 +15,27 @@ headers = {
 }
 
 
-def clean_team_name(name):
-  """Strips out numeric IDs and short code suffixes (e.g., '247 vs. Wolves HCWOLF' -> 'Wolves HC')."""
+def clean_name(name):
+  """Removes leading game IDs, 'vs.', and trailing HNA team uppercase codes (e.g., KRAF, HCWOLF)."""
   if not name:
     return ''
-
-  # Remove leading numbers/vs prefix
-  cleaned = re.sub(r'^\d+\s*(vs\.?|@)?\s*', '', name, flags=re.IGNORECASE)
-
-  # Remove trailing 3-6 letter team code uppercase block at the end (e.g. HCWOLF, KRAF)
-  cleaned = re.sub(r'([a-zA-Z0-9\s]+?)([A-Z]{3,6})$', r'\1', cleaned).strip()
-
-  return cleaned.strip()
+  # Strip team codes at the end (e.g. 'Wolves HCWOLF' -> 'Wolves')
+  text = re.sub(r'([a-zA-Z0-9\s]+?)([A-Z]{3,6})$', r'\1', name).strip()
+  # Strip numbers or vs/at prefixes
+  text = re.sub(r'^\d+\s*(vs\.?|at|@)?\s*', '', text, flags=re.IGNORECASE)
+  return text.strip()
 
 
-def parse_schedule():
-  response = requests.get(URL, headers=headers)
-  soup = BeautifulSoup(response.text, 'html.parser')
+def run_scraper():
+  print('Fetching schedule from HNA...')
+  res = requests.get(URL, headers=headers)
+  soup = BeautifulSoup(res.text, 'html.parser')
 
   past_games = []
   upcoming_games = []
 
-  # Target table rows
   rows = soup.find_all('tr')
+  print(f'Total table rows found: {len(rows)}')
 
   for row in rows:
     cols = [
@@ -45,8 +43,8 @@ def parse_schedule():
         for col in row.find_all(['td', 'th'])
     ]
 
-    # HNA schedule rows usually contain 5+ columns (Date, Visitor, Home, Score/Time, Location)
-    if len(cols) < 5:
+    # Skip rows without enough columns
+    if len(cols) < 4:
       continue
 
     row_text = ' '.join(cols).upper()
@@ -55,64 +53,51 @@ def parse_schedule():
     if 'KRAKEN' not in row_text and 'KRAF' not in row_text:
       continue
 
+    print(f'Matched Row: {cols}')
+
+    # Map columns based on standard HNA row layouts
+    # typical layout: [Date, Away Team, Home Team, Time/Score, Location]
     date_str = cols[0]
-    away_raw = cols[1]
-    home_raw = cols[2]
-    status_or_time = cols[3]
-    location = cols[4]
+    away_raw = cols[1] if len(cols) > 1 else ''
+    home_raw = cols[2] if len(cols) > 2 else ''
+    time_or_score = cols[3] if len(cols) > 3 else ''
+    location = cols[4] if len(cols) > 4 else ''
 
-    away_clean = clean_team_name(away_raw)
-    home_clean = clean_team_name(home_raw)
+    away_clean = clean_name(away_raw)
+    home_clean = clean_name(home_raw)
 
-    # Check if game is completed (contains Final or a score dash)
-    if 'FINAL' in status_or_time.upper() or '-' in status_or_time:
-      # Parse scores if available (e.g. "Final: 6-2" or "6-2")
-      scores = re.findall(r'\d+', status_or_time)
-      home_score = scores[0] if len(scores) > 0 else ''
-      away_score = scores[1] if len(scores) > 1 else ''
-
+    # Detect Completed Game vs Upcoming
+    if 'FINAL' in time_or_score.upper() or '-' in time_or_score:
       past_games.append({
           'date': date_str,
-          'home_team': home_clean,
-          'away_team': away_clean,
-          'home_score': home_score,
-          'away_score': away_score,
-          'status': status_or_time,
+          'home_team': home_clean or 'Kraken Beers',
+          'away_team': away_clean or 'Opponent',
+          'summary': f'Final: {time_or_score}',
+          'raw_score': time_or_score,
           'location': location,
       })
     else:
       upcoming_games.append({
           'date': date_str,
-          'time': status_or_time,
+          'time': time_or_score,
           'home_team': home_clean,
           'away_team': away_clean,
           'location': location,
       })
 
-  # Select the most recent completed game as last_game
+  # Set last game structure
   last_game = past_games[-1] if past_games else None
 
-  # Fallback formatting if last game scores couldn't be parsed directly from HTML columns
-  if last_game and not last_game['home_score']:
-    last_game_output = {
-        'summary': f"Final: {last_game['home_team']} vs {last_game['away_team']}",
-        'raw_status': last_game['status'],
-    }
-  elif last_game:
-    last_game_output = {
-        'home_team': last_game['home_team'],
-        'home_score': last_game['home_score'],
-        'away_team': last_game['away_team'],
-        'away_score': last_game['away_score'],
-    }
-  else:
-    last_game_output = None
-
-  output = {'last_game': last_game_output, 'upcoming_games': upcoming_games}
+  output = {'last_game': last_game, 'upcoming_games': upcoming_games}
 
   with open('schedule.json', 'w') as f:
     json.dump(output, f, indent=2)
 
+  print(
+      f"Finished! Found {len(past_games)} past games and"
+      f" {len(upcoming_games)} upcoming games."
+  )
+
 
 if __name__ == '__main__':
-  parse_schedule()
+  run_scraper()
