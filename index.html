@@ -8,7 +8,7 @@
   <!-- Team Fonts: Teko (Aggressive Sports/Jerseys) & Montserrat (Clean Body Text) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;800&family=Teko:wght@600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&family=Teko:wght@600;700&display=swap" rel="stylesheet">
   
   <style>
     :root {
@@ -40,7 +40,7 @@
     /* Top Navigation / Brand Bar */
     .top-bar {
       background-color: #000000;
-      padding: 15px 20px;
+      padding: 15px 20px 18px;
       text-align: center;
       border-bottom: 2px solid var(--kraken-red);
     }
@@ -48,6 +48,18 @@
     .top-bar img {
       max-height: 60px;
       width: auto;
+      display: block;
+      margin: 0 auto;
+    }
+
+    .top-bar-subtext {
+      font-family: 'Montserrat', sans-serif;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--text-light);
+      margin-top: 6px;
     }
 
     /* Hero Banner */
@@ -224,9 +236,10 @@
 </head>
 <body>
 
-  <!-- Top Banner Header with Horizontal Logo -->
+  <!-- Top Banner Header with Horizontal Logo & Subtitle -->
   <div class="top-bar">
     <img src="kb-horiz.png" alt="Kraken Beers Hockey">
+    <div class="top-bar-subtext">Hockey Club</div>
   </div>
 
   <!-- Hero Section -->
