@@ -1,16 +1,10 @@
 {
-  "last_game": {
-    "home_team": "Kraken Beers",
-    "away_team": "Wolves HC",
-    "home_score": "2",
-    "away_score": "6"
-  },
   "upcoming_games": [
     {
-      "date": "Sun Sep 13, 2026",
+      "date": "",
       "time": "7:55 PM",
       "home_team": "Hurricanes",
-      "away_team": "Kraken Beers",
+      "away_team": "Kraken",
       "location": "Playland"
     }
   ]
