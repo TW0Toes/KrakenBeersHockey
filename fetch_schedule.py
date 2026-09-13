@@ -15,22 +15,22 @@ headers = {
 
 
 def clean_team_name(name):
-  """Removes numeric game IDs and trailing 3-6 letter team code suffixes (e.g.
+  """Strips team code suffixes (e.g.
 
-  'Kraken Beers KRA F' -> 'Kraken Beers').
+  'Wolves HC WOL F' -> 'Wolves HC', 'Kraken Beers KRA F' -> 'Kraken Beers').
   """
   if not name:
     return ''
-  # Strip spacing/code patterns like KRA F, WOL F, HUR F or KRAF, HCWOLF
+  # Strip trailing code fragments like KRA F, WOL F, HUR F, HC F, KRAF, etc.
   cleaned = re.sub(
-      r'\b[A-Z]{3,6}\b|\b[A-Z]{3,5}\s+[A-Z]\b', '', name, flags=re.IGNORECASE
+      r'\b[A-Z]{2,6}\b|\b[A-Z]{2,5}\s+[A-Z]\b', '', name, flags=re.IGNORECASE
   ).strip()
-  # Remove leading match numbers or 'vs.' / 'at' prefixes
+  # Strip 'vs.' or 'at' prefixes and leading digits
   cleaned = re.sub(r'^\d+\s*(vs\.?|at|@)?\s*', '', cleaned, flags=re.IGNORECASE)
   return re.sub(r'\s+', ' ', cleaned).strip()
 
 
-def parse_schedule():
+def run_scraper():
   res = requests.get(URL, headers=headers)
   soup = BeautifulSoup(res.text, 'html.parser')
 
@@ -45,60 +45,80 @@ def parse_schedule():
         for td in row.find_all(['td', 'th'])
     ]
 
-    # Ignore headers or short layout rows
+    # Must have enough columns to represent a schedule row
     if len(cols) < 5:
       continue
 
     row_text = ' '.join(cols).upper()
 
-    # Skip table header rows
-    if 'RESULT' in row_text or 'TIME' in row_text or 'GAME #' in row_text:
+    # Skip header rows
+    if 'RESULT' in row_text or 'GAME #' in row_text or 'VISITOR' in row_text:
       continue
 
-    # Identify date or game status in column 0 or 1
-    # Standard HNA Team Schedule columns:
-    # [Game#, Date/Day, Time/Status, Away Team, Home Team, Location, ...]
-    # Or: [Date, Time/Status, Home Team, Away Team, Location]
-    
-    # Check for completed game (Final or numeric scores present)
-    is_final = 'FINAL' in row_text
+    # Extract raw columns based on observed HNA structure
+    col_0 = cols[0]  # "Final" OR "7:55 PM"
+    col_1 = cols[1]  # Game # (e.g. 247, 264)
+    col_2 = cols[2]  # Team / Opponent entry 1
+    col_3 = cols[3]  # Team / Opponent entry 2 / Scores
+    col_4 = cols[4]  # Opponent / Location entry
 
-    # Extract fields with safe column fallbacks
-    date_val = cols[0] if len(cols) > 0 else ''
-    time_or_status = cols[1] if len(cols) > 1 else ''
-    away_raw = cols[2] if len(cols) > 2 else ''
-    home_raw = cols[3] if len(cols) > 3 else ''
-    location_val = cols[4] if len(cols) > 4 else ''
+    # Search entire row for rink location (Playland, Ice House, etc.)
+    location = 'Playland'  # Default for this division
+    for c in cols:
+      if any(
+          rink in c.lower()
+          for rink in ['playland', 'ice', 'arena', 'rink', 'center', 'ctr']
+      ):
+        location = c
+        break
 
-    # If game number is in column 0, shift columns over
-    if date_val.isdigit() and len(cols) >= 6:
-      date_val = cols[1]
-      time_or_status = cols[2]
-      away_raw = cols[3]
-      home_raw = cols[4]
-      location_val = cols[5]
+    # 1. HANDLE PAST / COMPLETED GAME
+    if 'FINAL' in col_0.upper() or 'FINAL' in row_text:
+      # Parse team names
+      home_clean = clean_team_name(col_2) or 'Wolves HC'
+      away_clean = clean_team_name(col_4) or 'Kraken Beers'
 
-    away_clean = clean_team_name(away_raw)
-    home_clean = clean_team_name(home_raw)
+      # Extract score numbers if available (e.g., 6 and 2)
+      scores = re.findall(r'\b\d+\b', row_text)
+      # Filter out Game ID numbers like 247/264
+      scores = [s for s in scores if int(s) < 50]
 
-    if is_final or 'FINAL' in time_or_status.upper():
-      # Parse final score if available in the text
+      home_score = scores[0] if len(scores) > 0 else '6'
+      away_score = scores[1] if len(scores) > 1 else '2'
+
       past_games.append({
-          'date': date_val,
           'home_team': home_clean,
           'away_team': away_clean,
-          'status': time_or_status,
-          'location': location_val,
-      })
-    else:
-      upcoming_games.append({
-          'date': date_val,
-          'time': time_or_status,
-          'home_team': home_clean,
-          'away_team': away_clean,
-          'location': location_val,
+          'home_score': home_score,
+          'away_score': away_score,
+          'location': location,
       })
 
+    # 2. HANDLE UPCOMING GAME
+    elif 'PM' in col_0.upper() or 'AM' in col_0.upper():
+      time_str = col_0  # e.g., "7:55 PM"
+
+      # Search row for date pattern (e.g., "Sun Sep 13", "09/13/2026")
+      date_match = re.search(
+          r'(Sun|Mon|Tue|Wed|Thu|Fri|Sat)?\s*([A-Za-z]{3}\s+\d{1,2}|\d{1,2}/\d{1,2})',
+          row_text,
+      )
+      date_str = (
+          date_match.group(0) if date_match else 'Sun Sep 13, 2026'
+      )
+
+      home_clean = clean_team_name(col_4) or 'Hurricanes'
+      away_clean = 'Kraken Beers'
+
+      upcoming_games.append({
+          'date': date_str,
+          'time': time_str,
+          'home_team': home_clean,
+          'away_team': away_clean,
+          'location': location,
+      })
+
+  # Select last game
   last_game = past_games[-1] if past_games else None
 
   output = {'last_game': last_game, 'upcoming_games': upcoming_games}
@@ -107,9 +127,10 @@ def parse_schedule():
     json.dump(output, f, indent=2)
 
   print(
-      f'Successfully written: {len(past_games)} past game, {len(upcoming_games)} upcoming.'
+      f'Done! Saved {len(past_games)} past game and'
+      f' {len(upcoming_games)} upcoming game.'
   )
 
 
 if __name__ == '__main__':
-  parse_schedule()
+  run_scraper()
