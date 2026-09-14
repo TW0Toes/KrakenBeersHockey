@@ -2,7 +2,7 @@ name: Auto Update Schedule
 
 on:
   schedule:
-    - cron: '0 6 * * *' # Runs daily at 6 AM UTC
+    - cron: '0 * * * *'
   workflow_dispatch: # Allows manual trigger from the GitHub UI
 
 jobs:
