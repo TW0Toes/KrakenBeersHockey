@@ -13,135 +13,97 @@ headers = {
     )
 }
 
-
 def clean_team_name(name):
-  """Generically strips team code suffixes (e.g.
+    """Generically strips team code suffixes (e.g. 'Kraken Beers KRA F' -> 'Kraken Beers')."""
+    if not name:
+        return ""
+    
+    cleaned = re.sub(r'\b[A-Z]{2,5}\s+[A-Z0-9]\b$', '', name.strip(), flags=re.IGNORECASE)
+    cleaned = re.sub(r'\b[A-Z]{3,5}\b$', '', cleaned.strip(), flags=re.IGNORECASE)
+    cleaned = re.sub(r'^\d+\s*(vs\.?|at|@)?\s*', '', cleaned, flags=re.IGNORECASE)
+    return re.sub(r'\s+', ' ', cleaned).strip()
 
-  'Kraken Beers KRA F' -> 'Kraken Beers', 'Hurricanes HUR F' -> 'Hurricanes').
-  """
-  if not name:
-    return ''
+def extract_date_from_cells(cols):
+    """Checks each column individually for any valid date format."""
+    # Pattern 1: Day + Month + Date (e.g., 'Sun Sep 13', 'Sun, Sep 13', 'Sun Sep 13, 2026')
+    date_pattern_1 = r'\b(Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+[A-Z][a-z]{2}\s+\d{1,2}(?:,?\s*\d{4})?\b'
+    # Pattern 2: Numerical date (e.g., '09/13/2026' or '9/13')
+    date_pattern_2 = r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b'
 
-  # 1. Strip trailing 2-5 uppercase letter codes with optional single letter suffix
-  cleaned = re.sub(
-      r'\b[A-Z]{2,5}\s+[A-Z0-9]\b$', '', name.strip(), flags=re.IGNORECASE
-  )
-
-  # 2. Strip standalone trailing uppercase code blocks
-  cleaned = re.sub(r'\b[A-Z]{3,5}\b$', '', cleaned.strip(), flags=re.IGNORECASE)
-
-  # 3. Strip leading match IDs or prefixes ("vs", "at", etc.)
-  cleaned = re.sub(r'^\d+\s*(vs\.?|at|@)?\s*', '', cleaned, flags=re.IGNORECASE)
-
-  return re.sub(r'\s+', ' ', cleaned).strip()
-
-
-def extract_date_from_text(text):
-  """Extracts date matching patterns like 'Sun Sep 13, 2026', 'Sun Sep 13', or '09/13/2026'."""
-  date_match = re.search(
-      r'\b(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+[A-Za-z]{3}\s+\d{1,2}(?:,\s*\d{4})?\b',
-      text,
-      re.IGNORECASE,
-  )
-  if date_match:
-    return date_match.group(0).strip()
-
-  fallback_match = re.search(
-      r'\b([A-Za-z]{3}\s+\d{1,2}|\d{1,2}/\d{1,2}(?:/\d{2,4})?)\b', text
-  )
-  if fallback_match and not any(
-      kw in fallback_match.group(0).upper() for kw in ['PM', 'AM', 'FINAL']
-  ):
-    return fallback_match.group(0).strip()
-
-  return ''
-
+    for col in cols:
+        match = re.search(date_pattern_1, col, re.IGNORECASE)
+        if match:
+            return match.group(0).strip()
+            
+        match_num = re.search(date_pattern_2, col)
+        if match_num:
+            return match_num.group(0).strip()
+            
+    return ""
 
 def run_scraper():
-  print('Fetching schedule from HNA...')
-  res = requests.get(URL, headers=headers)
-  soup = BeautifulSoup(res.text, 'html.parser')
+    print("Fetching schedule from HNA...")
+    res = requests.get(URL, headers=headers)
+    soup = BeautifulSoup(res.text, 'html.parser')
 
-  upcoming_games = []
-  rows = soup.find_all('tr')
+    upcoming_games = []
+    rows = soup.find_all('tr')
 
-  last_header_date = ''
+    current_date = ""
 
-  for row in rows:
-    cols = [
-        re.sub(r'\s+', ' ', td.text).strip()
-        for td in row.find_all(['td', 'th'])
-    ]
-    raw_row_text = ' '.join(cols).strip()
-    row_upper = raw_row_text.upper()
+    for row in rows:
+        cols = [re.sub(r'\s+', ' ', td.text).strip() for td in row.find_all(['td', 'th'])]
+        
+        if not cols:
+            continue
 
-    # Track date header rows if HNA splits dates into standalone row headers
-    found_date = extract_date_from_text(raw_row_text)
-    if found_date and not ('PM' in row_upper or 'AM' in row_upper):
-      last_header_date = found_date
+        raw_row_text = ' '.join(cols).upper()
 
-    # Skip invalid or short rows
-    if len(cols) < 4:
-      continue
+        # Extract date from cells if present
+        found_date = extract_date_from_cells(cols)
+        if found_date:
+            current_date = found_date
 
-    # Skip headers and finished games
-    if (
-        'RESULT' in row_upper
-        or 'GAME #' in row_upper
-        or 'VISITOR' in row_upper
-        or 'FINAL' in row_upper
-    ):
-      continue
+        # Skip headers, results, or short rows
+        if len(cols) < 4 or any(kw in raw_row_text for kw in ['RESULT', 'GAME #', 'VISITOR', 'FINAL']):
+            continue
 
-    # Check for time in column 0 or 1
-    col_0 = cols[0]
-    col_1 = cols[1] if len(cols) > 1 else ''
+        # Look for time string (AM/PM) in any cell
+        time_str = ""
+        for cell in cols:
+            if 'PM' in cell.upper() or 'AM' in cell.upper():
+                time_str = cell
+                break
 
-    time_str = ''
-    if 'PM' in col_0.upper() or 'AM' in col_0.upper():
-      time_str = col_0
-    elif 'PM' in col_1.upper() or 'AM' in col_1.upper():
-      time_str = col_1
+        if time_str:
+            raw_team_1 = cols[2] if len(cols) > 2 else ""
+            raw_team_2 = cols[4] if len(cols) > 4 else (cols[3] if len(cols) > 3 else "")
 
-    if time_str:
-      # Prioritize date found directly inside this game's row; fallback to last header date
-      row_date = extract_date_from_text(raw_row_text)
-      game_date = row_date if row_date else last_header_date
+            team_1_clean = clean_team_name(raw_team_1)
+            team_2_clean = clean_team_name(raw_team_2)
 
-      # Team mapping based on HNA column positions
-      raw_team_1 = cols[2] if len(cols) > 2 else ''
-      raw_team_2 = cols[4] if len(cols) > 4 else cols[3] if len(cols) > 3 else ''
+            location = "Playland"
+            for c in cols:
+                if any(rink in c.lower() for rink in ['playland', 'ice', 'arena', 'rink', 'center', 'ctr']):
+                    location = c
+                    break
 
-      team_1_clean = clean_team_name(raw_team_1)
-      team_2_clean = clean_team_name(raw_team_2)
+            upcoming_games.append({
+                "date": current_date,
+                "time": time_str,
+                "home_team": team_2_clean,
+                "away_team": team_1_clean,
+                "location": location
+            })
 
-      # Location fallback
-      location = 'Playland'
-      for c in cols:
-        if any(
-            rink in c.lower()
-            for rink in ['playland', 'ice', 'arena', 'rink', 'center', 'ctr']
-        ):
-          location = c
-          break
+    output = {
+        "upcoming_games": upcoming_games
+    }
 
-      upcoming_games.append({
-          'date': game_date,
-          'time': time_str,
-          'home_team': team_2_clean,
-          'away_team': team_1_clean,
-          'location': location,
-      })
+    with open('schedule.json', 'w') as f:
+        json.dump(output, f, indent=2)
 
-  output = {'upcoming_games': upcoming_games}
-
-  with open('schedule.json', 'w') as f:
-    json.dump(output, f, indent=2)
-
-  print(
-      f'Done! Processed {len(upcoming_games)} game(s) with corrected dates.'
-  )
-
+    print(f"Done! Saved {len(upcoming_games)} game(s) with dates.")
 
 if __name__ == '__main__':
-  run_scraper()
+    run_scraper()
