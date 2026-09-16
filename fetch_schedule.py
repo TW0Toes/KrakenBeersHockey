@@ -14,30 +14,30 @@ headers = {
 }
 
 def clean_team_name(name):
-    """Generically strips team code suffixes (e.g. 'Kraken Beers KRA F' -> 'Kraken Beers')."""
+    """Generically strips team code suffixes (e.g., 'Kraken Beers KRA F' -> 'Kraken Beers')."""
     if not name:
         return ""
-    
     cleaned = re.sub(r'\b[A-Z]{2,5}\s+[A-Z0-9]\b$', '', name.strip(), flags=re.IGNORECASE)
     cleaned = re.sub(r'\b[A-Z]{3,5}\b$', '', cleaned.strip(), flags=re.IGNORECASE)
     cleaned = re.sub(r'^\d+\s*(vs\.?|at|@)?\s*', '', cleaned, flags=re.IGNORECASE)
     return re.sub(r'\s+', ' ', cleaned).strip()
 
-def extract_date_from_cells(cols):
-    """Checks each column individually for any valid date format."""
-    # Pattern 1: Day + Month + Date (e.g., 'Sun Sep 13', 'Sun, Sep 13', 'Sun Sep 13, 2026')
-    date_pattern_1 = r'\b(Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+[A-Z][a-z]{2}\s+\d{1,2}(?:,?\s*\d{4})?\b'
-    # Pattern 2: Numerical date (e.g., '09/13/2026' or '9/13')
-    date_pattern_2 = r'\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b'
-
-    for col in cols:
-        match = re.search(date_pattern_1, col, re.IGNORECASE)
+def find_date_in_element(element):
+    """Searches raw HTML string, cell text, and inner tag attributes for dates."""
+    # Check text and HTML strings
+    raw_html = str(element)
+    
+    # Matches patterns like: 'Sun Sep 13', 'Sun, Sep 13', 'Sep 13, 2026', '09/13/2026'
+    patterns = [
+        r'\b(Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+[A-Za-z]{3}\s+\d{1,2}(?:,?\s*\d{4})?\b',
+        r'\b[A-Za-z]{3}\s+\d{1,2},?\s+\d{4}\b',
+        r'\b\d{1,2}/\d{1,2}/\d{2,4}\b'
+    ]
+    
+    for pat in patterns:
+        match = re.search(pat, raw_html, re.IGNORECASE)
         if match:
             return match.group(0).strip()
-            
-        match_num = re.search(date_pattern_2, col)
-        if match_num:
-            return match_num.group(0).strip()
             
     return ""
 
@@ -52,23 +52,22 @@ def run_scraper():
     current_date = ""
 
     for row in rows:
+        # Check if this row (or any nested element) defines a new date context
+        row_date = find_date_in_element(row)
+        if row_date and not any(time_kw in row_date.upper() for time_kw in ['PM', 'AM']):
+            current_date = row_date
+
         cols = [re.sub(r'\s+', ' ', td.text).strip() for td in row.find_all(['td', 'th'])]
-        
         if not cols:
             continue
 
         raw_row_text = ' '.join(cols).upper()
 
-        # Extract date from cells if present
-        found_date = extract_date_from_cells(cols)
-        if found_date:
-            current_date = found_date
-
-        # Skip headers, results, or short rows
-        if len(cols) < 4 or any(kw in raw_row_text for kw in ['RESULT', 'GAME #', 'VISITOR', 'FINAL']):
+        # Skip table headers and completed game rows
+        if len(cols) < 3 or any(kw in raw_row_text for kw in ['RESULT', 'GAME #', 'VISITOR', 'FINAL']):
             continue
 
-        # Look for time string (AM/PM) in any cell
+        # Look for time string (AM/PM) across row cells
         time_str = ""
         for cell in cols:
             if 'PM' in cell.upper() or 'AM' in cell.upper():
