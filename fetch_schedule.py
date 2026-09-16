@@ -22,6 +22,18 @@ def clean_team_name(name):
     cleaned = re.sub(r'^\d+\s*(vs\.?|at|@)?\s*', '', cleaned, flags=re.IGNORECASE)
     return re.sub(r'\s+', ' ', cleaned).strip()
 
+def extract_hna_date(text):
+    """
+    Extracts dates formatted like 'Wed Sep 16, 2026', 'Wed Sept 16, 2026',
+    'Wed, Sep 16 2026', or 'Wednesday Sept 16, 2026'.
+    """
+    # {3,4} accommodates both 3-letter (Sep) and 4-letter (Sept) month abbreviations
+    pattern = r'\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+[A-Za-z]{3,4}\s+\d{1,2}(?:,?\s*\d{4})?\b'
+    match = re.search(pattern, text, re.IGNORECASE)
+    if match:
+        return match.group(0).strip()
+    return ""
+
 def run_scraper():
     print("Fetching schedule from HNA...")
     res = requests.get(URL, headers=headers)
@@ -41,23 +53,16 @@ def run_scraper():
         raw_row_text = ' '.join(cols).strip()
         row_upper = raw_row_text.upper()
 
-        # Skip main table header rows
+        # Check row text for date pattern (e.g., Wed Sep 16, 2026 or Wed Sept 16, 2026)
+        found_date = extract_hna_date(raw_row_text)
+        if found_date:
+            current_date = found_date
+
+        # Skip main table header rows or completed game markers
         if any(kw in row_upper for kw in ['RESULT', 'GAME #', 'VISITOR', 'FINAL']):
             continue
 
-        # Look for explicit date strings across any cell in this row
-        for cell in cols:
-            # Matches 'Sun Sep 13', 'Sun, Sep 13', '09/13/2026', or '9/13/26'
-            date_match = re.search(
-                r'\b((?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+[A-Za-z]{3}\s+\d{1,2}|\d{1,2}/\d{1,2}(?:/\d{2,4})?)\b', 
-                cell, 
-                re.IGNORECASE
-            )
-            if date_match and not any(time_kw in cell.upper() for time_kw in ['PM', 'AM']):
-                current_date = date_match.group(0).strip()
-                break
-
-        # Identify time cell (AM/PM)
+        # Look for time string (AM/PM) in any cell
         time_str = ""
         for cell in cols:
             if 'PM' in cell.upper() or 'AM' in cell.upper():
@@ -92,7 +97,7 @@ def run_scraper():
     with open('schedule.json', 'w') as f:
         json.dump(output, f, indent=2)
 
-    print(f"Done! Saved {len(upcoming_games)} game(s).")
+    print(f"Done! Saved {len(upcoming_games)} game(s) with date context: '{current_date}'.")
 
 if __name__ == '__main__':
     run_scraper()
