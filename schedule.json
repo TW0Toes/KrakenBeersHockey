@@ -1,3 +1,11 @@
 {
-  "upcoming_games": []
+  "upcoming_games": [
+    {
+      "date": "Sep. 22, 2026",
+      "time": "10:30 PM",
+      "home_team": "Kraken",
+      "away_team": "Hurricanes",
+      "location": "WSA Canada Rink"
+    }
+  ]
 }
