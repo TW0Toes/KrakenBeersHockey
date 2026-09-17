@@ -176,6 +176,7 @@
       padding: 35px;
       border-radius: 8px;
       border-left: 4px solid var(--kraken-red);
+      margin-bottom: 30px;
     }
 
     .info-box h3 {
@@ -223,6 +224,50 @@
       color: var(--text-muted);
     }
 
+    /* Standings Table Styling */
+    .table-responsive {
+      overflow-x: auto;
+      margin-top: 15px;
+    }
+
+    .standings-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: center;
+    }
+
+    .standings-table th, 
+    .standings-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .standings-table th {
+      font-family: 'Teko', sans-serif;
+      font-size: 1.6rem;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+    }
+
+    .standings-table td.team-cell {
+      text-align: left;
+      font-weight: 600;
+    }
+
+    .standings-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    /* Highlight Kraken Beers Row */
+    .standings-table tr.highlight-team {
+      background-color: rgba(217, 4, 41, 0.2);
+    }
+
+    .standings-table tr.highlight-team .team-cell {
+      color: var(--kraken-red);
+      font-weight: 800;
+    }
+
     /* Footer */
     footer {
       text-align: center;
@@ -263,11 +308,20 @@
     </div>
   </header>
 
-  <!-- Main Schedule Section -->
+  <!-- Main Content Area -->
   <main>
+    <!-- Schedule Box -->
     <div class="info-box" id="schedule-box">
       <h3>Schedule</h3>
       <p style="color: var(--text-muted);">Loading schedule...</p>
+    </div>
+
+    <!-- Standings Box -->
+    <div class="info-box" id="standings-box">
+      <h3>F Division Standings</h3>
+      <div id="standings-content">
+        <p style="color: var(--text-muted);">Loading standings...</p>
+      </div>
     </div>
   </main>
 
@@ -276,7 +330,7 @@
     &copy; Kraken Beers Hockey Club | KrakenBeersHockey.com
   </footer>
 
-  <!-- Dynamic Schedule Script -->
+  <!-- Dynamic Schedule & Standings Scripts -->
   <script>
     async function loadSchedule() {
       const scheduleBox = document.getElementById('schedule-box');
@@ -289,7 +343,7 @@
         const data = await res.json();
         let htmlContent = '';
 
-        // 1. Render Last Game Section
+        // 1. Render Last Game Section (if available)
         if (data.last_game) {
           const lg = data.last_game;
           let scoreDisplay = '';
@@ -335,7 +389,71 @@
       }
     }
 
-    document.addEventListener('DOMContentLoaded', loadSchedule);
+    async function loadStandings() {
+      const standingsContent = document.getElementById('standings-content');
+      if (!standingsContent) return;
+
+      try {
+        const res = await fetch('standings.json');
+        if (!res.ok) throw new Error('No standings found');
+
+        const data = await res.json();
+
+        if (!data.standings || data.standings.length === 0) {
+          standingsContent.innerHTML = `<p style="color: var(--text-muted);">No standings available.</p>`;
+          return;
+        }
+
+        let tableHtml = `
+          <div class="table-responsive">
+            <table class="standings-table">
+              <thead>
+                <tr>
+                  <th style="text-align: left;">Team</th>
+                  <th>GP</th>
+                  <th>W</th>
+                  <th>L</th>
+                  <th>T</th>
+                  <th>PTS</th>
+                </tr>
+              </thead>
+              <tbody>
+        `;
+
+        data.standings.forEach(row => {
+          const isKraken = row.team.toLowerCase().includes('kraken');
+          tableHtml += `
+            <tr class="${isKraken ? 'highlight-team' : ''}">
+              <td class="team-cell">${row.team}</td>
+              <td>${row.gp}</td>
+              <td>${row.w}</td>
+              <td>${row.l}</td>
+              <td>${row.t}</td>
+              <td><strong>${row.pts}</strong></td>
+            </tr>
+          `;
+        });
+
+        tableHtml += `
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        standingsContent.innerHTML = tableHtml;
+
+      } catch (err) {
+        console.error(err);
+        standingsContent.innerHTML = `
+          <p style="color: var(--text-muted);">Check back soon for updated standings.</p>
+        `;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadSchedule();
+      loadStandings();
+    });
   </script>
 
 </body>
