@@ -3,7 +3,7 @@ import re
 from bs4 import BeautifulSoup
 import requests
 
-URL = 'https://www.hna.com/leagues/schedules.cfm?clientID=2296&leagueID=25148&teamID=679527&printPage=0'
+URL = 'https://www.hna.com/leagues/schedules.cfm?clientID=2296&leagueID=5717&teamID=683136&printPage=0'
 
 headers = {
     'User-Agent': (
