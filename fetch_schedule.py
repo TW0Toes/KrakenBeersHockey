@@ -3,7 +3,8 @@ import re
 from bs4 import BeautifulSoup
 import requests
 
-URL = 'https://www.hna.com/leagues/schedules.cfm?clientID=2296&leagueID=5717&teamID=683136&printPage=0'
+SCHEDULE_URL = 'https://www.hna.com/leagues/schedules.cfm?clientID=2296&leagueID=25148&teamID=679527&printPage=0'
+STANDINGS_URL = 'https://www.hna.com/leagues/standings.cfm?leagueID=5717&clientID=2296'
 
 headers = {
     'User-Agent': (
@@ -23,56 +24,42 @@ def clean_team_name(name):
     return re.sub(r'\s+', ' ', cleaned).strip()
 
 def extract_hna_date(text):
-    """
-    Extracts dates formatted like 'Wed Sep 16, 2026', 'Wed Sep. 16, 2026',
-    'Sep. 16, 2026', or 'Sep 16, 2026'.
-    """
     patterns = [
-        # With day of week: "Wed Sep. 16, 2026" or "Wed Sep 16, 2026"
         r'\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+[A-Za-z]{3,4}\.?\s+\d{1,2}(?:,?\s*\d{4})?\b',
-        # Without day of week: "Sep. 16, 2026" or "Sep 16, 2026"
         r'\b[A-Za-z]{3,4}\.?\s+\d{1,2},?\s+\d{4}\b'
     ]
-    
     for pat in patterns:
         match = re.search(pat, text, re.IGNORECASE)
         if match:
             return match.group(0).strip()
-            
     return ""
 
-def run_scraper():
+def scrape_schedule():
     print("Fetching schedule from HNA...")
-    res = requests.get(URL, headers=headers)
+    res = requests.get(SCHEDULE_URL, headers=headers)
     soup = BeautifulSoup(res.text, 'html.parser')
 
     upcoming_games = []
     rows = soup.find_all('tr')
-
     current_date = ""
 
     for row in rows:
         cols = [re.sub(r'\s+', ' ', td.text).strip() for td in row.find_all(['td', 'th'])]
-        
         if not cols:
             continue
 
         raw_row_text = ' '.join(cols).strip()
         row_upper = raw_row_text.upper()
 
-        # Check row text for date pattern (e.g., Sep. 16, 2026 or Wed Sep 16, 2026)
         found_date = extract_hna_date(raw_row_text)
         if found_date:
             current_date = found_date
 
-        # Skip main table headers, summary rows, or completed game markers
         if any(kw in row_upper for kw in ['RESULT', 'GAME #', 'VISITOR', 'FINAL', 'RECORD:', 'LAST:']):
             continue
 
-        # Look for actual time string (e.g., "10:05 PM") in table columns
         time_str = ""
         for cell in cols:
-            # Valid game times are short strings containing AM/PM (e.g. "10:05 PM")
             if ('PM' in cell.upper() or 'AM' in cell.upper()) and len(cell) < 15:
                 time_str = cell
                 break
@@ -98,14 +85,69 @@ def run_scraper():
                 "location": location
             })
 
-    output = {
-        "upcoming_games": upcoming_games
-    }
-
     with open('schedule.json', 'w') as f:
-        json.dump(output, f, indent=2)
+        json.dump({"upcoming_games": upcoming_games}, f, indent=2)
 
-    print(f"Done! Saved {len(upcoming_games)} upcoming game(s).")
+def scrape_standings():
+    print("Fetching standings from HNA...")
+    res = requests.get(STANDINGS_URL, headers=headers)
+    soup = BeautifulSoup(res.text, 'html.parser')
+
+    standings_data = []
+    in_f_division = False
+
+    rows = soup.find_all('tr')
+    for row in rows:
+        text = row.text.strip().upper()
+        
+        # Identify Division Headers
+        if "DIVISION" in text:
+            if "F DIVISION" in text or "DIVISION F" in text:
+                in_f_division = True
+            else:
+                in_f_division = False
+            continue
+
+        if not in_f_division:
+            continue
+
+        cols = [re.sub(r'\s+', ' ', td.text).strip() for td in row.find_all(['td', 'th'])]
+        
+        # Skip header rows
+        if not cols or 'TEAM' in cols[0].upper() or 'GP' in cols:
+            continue
+
+        # Expect standard standings columns: Team, GP, W, L, T, PTS, etc.
+        if len(cols) >= 6:
+            raw_team = cols[0]
+            team_clean = clean_team_name(raw_team)
+
+            # Defensive numerical checks
+            try:
+                gp = int(cols[1])
+                w = int(cols[2])
+                l = int(cols[3])
+                t = int(cols[4])
+                pts = int(cols[5])
+
+                standings_data.append({
+                    "team": team_clean,
+                    "gp": gp,
+                    "w": w,
+                    "l": l,
+                    "t": t,
+                    "pts": pts
+                })
+            except ValueError:
+                continue
+
+    # Sort descending by Points
+    standings_data.sort(key=lambda x: x['pts'], reverse=True)
+
+    with open('standings.json', 'w') as f:
+        json.dump({"standings": standings_data}, f, indent=2)
 
 if __name__ == '__main__':
-    run_scraper()
+    scrape_schedule()
+    scrape_standings()
+    print("Scraping complete!")
