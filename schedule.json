@@ -1,11 +1,3 @@
 {
-  "upcoming_games": [
-    {
-      "date": "",
-      "time": "10:05 PM",
-      "home_team": "Kraken",
-      "away_team": "Hitmen",
-      "location": "Playland"
-    }
-  ]
+  "upcoming_games": []
 }
