@@ -3,15 +3,11 @@ import re
 import requests
 from bs4 import BeautifulSoup
 
-SCHEDULE_URL = "https://www.hna.com/leagues/schedules.cfm?clientID=2296&leagueID=25148&teamID=679527&printPage=0"
-STANDINGS_URL = "https://www.hna.com/leagues/standings.cfm?leagueID=5717&clientID=2296"
+SCHEDULE_URL = "https://www.hna.com/leagues/sched_print.cfm?clientCode=HNA&leagueID=5805"
+STANDINGS_URL = "https://www.hna.com/leagues/standings_print.cfm?clientCode=HNA&leagueID=5805"
 
 HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    )
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
 def clean_team_name(name):
@@ -34,9 +30,9 @@ def extract_hna_date(text):
     return ""
 
 def scrape_schedule():
-    print("Fetching schedule from HNA...")
+    print("Fetching schedule...")
     schedule_data = {"last_game": None, "upcoming_games": []}
-    
+
     try:
         res = requests.get(SCHEDULE_URL, headers=HEADERS, timeout=15)
         res.raise_for_status()
@@ -57,33 +53,31 @@ def scrape_schedule():
             if found_date:
                 current_date = found_date
 
+            # Filter out summary headers
             if any(kw in row_upper for kw in ['RESULT', 'GAME #', 'VISITOR', 'FINAL', 'RECORD:', 'LAST:']):
                 continue
 
-            time_str = ""
-            for cell in cols:
-                if ('PM' in cell.upper() or 'AM' in cell.upper()) and len(cell) < 15:
-                    time_str = cell
-                    break
+            if "KRAKEN" in row_upper:
+                time_str = next((c for c in cols if 'PM' in c.upper() or 'AM' in c.upper()), "")
+                teams = [c for c in cols if " VS " in c.upper() or " AT " in c.upper()]
 
-            if time_str:
-                raw_team_1 = cols[2] if len(cols) > 2 else ""
-                raw_team_2 = cols[4] if len(cols) > 4 else (cols[3] if len(cols) > 3 else "")
+                matchup = teams[0] if teams else "Kraken Beers vs Opponent"
+                location = cols[-1] if len(cols) > 3 else "Local Rink"
 
-                team_1_clean = clean_team_name(raw_team_1)
-                team_2_clean = clean_team_name(raw_team_2)
-
-                location = "Playland"
-                for c in cols:
-                    if any(rink in c.lower() for rink in ['playland', 'ice', 'arena', 'rink', 'center', 'ctr']):
-                        location = c
-                        break
+                if " VS " in matchup.upper():
+                    parts = re.split(r'\s+VS\s+', matchup, flags=re.IGNORECASE)
+                    home, away = parts[0], parts[1]
+                elif " AT " in matchup.upper():
+                    parts = re.split(r'\s+AT\s+', matchup, flags=re.IGNORECASE)
+                    away, home = parts[0], parts[1]
+                else:
+                    home, away = "Kraken Beers", "Opponent"
 
                 schedule_data["upcoming_games"].append({
                     "date": current_date or "TBD",
                     "time": time_str,
-                    "home_team": team_2_clean,
-                    "away_team": team_1_clean,
+                    "home_team": clean_team_name(home),
+                    "away_team": clean_team_name(away),
                     "location": location
                 })
     except Exception as e:
@@ -94,7 +88,7 @@ def scrape_schedule():
     print(f"Schedule complete! Saved {len(schedule_data['upcoming_games'])} games.")
 
 def scrape_standings():
-    print("Fetching standings from HNA...")
+    print("Fetching standings...")
     standings_data = []
 
     try:
@@ -118,8 +112,8 @@ def scrape_standings():
             if not in_f_division:
                 continue
 
-            cols = [re.sub(r'\s+', ' ', td.text).strip() for td in row.find_all(['td', 'th'])]
-            
+            cols = [re.sub(r'\s+', ' ', td.text).strip() for td in row.find_all(['td', 'th']) if td.text.strip()]
+
             if not cols or 'TEAM' in cols[0].upper() or 'GP' in cols[0].upper():
                 continue
 
