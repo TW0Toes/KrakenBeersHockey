@@ -3,11 +3,15 @@ import re
 import requests
 from bs4 import BeautifulSoup
 
-SCHEDULE_URL = "https://www.hna.com/leagues/sched_print.cfm?clientCode=HNA&leagueID=5805"
-STANDINGS_URL = "https://www.hna.com/leagues/standings_print.cfm?clientCode=HNA&leagueID=5805"
+# Standard page URLs (instead of print endpoints)
+SCHEDULE_URL = "https://www.hna.com/leagues/schedules.cfm?clientCode=HNA&leagueID=5805"
+STANDINGS_URL = "https://www.hna.com/leagues/standings.cfm?clientCode=HNA&leagueID=5805"
+BASE_URL = "https://www.hna.com/leagues/front_pagehna.cfm?clientCode=HNA&leagueID=5805"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Referer": BASE_URL
 }
 
 def clean_team_name(name):
@@ -29,12 +33,22 @@ def extract_hna_date(text):
             return match.group(0).strip()
     return ""
 
-def scrape_schedule():
+def run_scraper():
+    session = requests.Session()
+    session.headers.update(HEADERS)
+
+    # Establish session cookies to bypass 500 error
+    try:
+        session.get(BASE_URL, timeout=15)
+    except Exception as e:
+        print(f"Session pre-flight warning: {e}")
+
+    # --- SCRAPE SCHEDULE ---
     print("Fetching schedule...")
     schedule_data = {"last_game": None, "upcoming_games": []}
 
     try:
-        res = requests.get(SCHEDULE_URL, headers=HEADERS, timeout=15)
+        res = session.get(SCHEDULE_URL, timeout=15)
         res.raise_for_status()
         soup = BeautifulSoup(res.text, 'html.parser')
 
@@ -53,7 +67,6 @@ def scrape_schedule():
             if found_date:
                 current_date = found_date
 
-            # Filter out summary headers
             if any(kw in row_upper for kw in ['RESULT', 'GAME #', 'VISITOR', 'FINAL', 'RECORD:', 'LAST:']):
                 continue
 
@@ -87,12 +100,12 @@ def scrape_schedule():
         json.dump(schedule_data, f, indent=2)
     print(f"Schedule complete! Saved {len(schedule_data['upcoming_games'])} games.")
 
-def scrape_standings():
+    # --- SCRAPE STANDINGS ---
     print("Fetching standings...")
     standings_data = []
 
     try:
-        res = requests.get(STANDINGS_URL, headers=HEADERS, timeout=15)
+        res = session.get(STANDINGS_URL, timeout=15)
         res.raise_for_status()
         soup = BeautifulSoup(res.text, 'html.parser')
 
@@ -142,5 +155,4 @@ def scrape_standings():
     print(f"Standings complete! Saved {len(standings_data)} teams.")
 
 if __name__ == '__main__':
-    scrape_schedule()
-    scrape_standings()
+    run_scraper()
