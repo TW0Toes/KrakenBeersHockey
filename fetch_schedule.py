@@ -15,13 +15,15 @@ CLIENT_ID = "2296"
 LEAGUE_ID = "5717"
 TEAM_ID = "683136"
 
+# Current season months
 YEARS = [2026, 2027]
-MONTHS = list(range(1, 13))
+MONTHS = [9, 10, 11, 12, 1, 2, 3, 4]  # Sep through Apr
 
 
 def clean_team_name(name):
   if not name:
     return ""
+  # Strip division codes like "KRA F", "WHI F", "REA F" from team names
   cleaned = re.sub(
       r"\b[A-Z]{2,5}\s+[A-Z0-9]\b$", "", name.strip(), flags=re.IGNORECASE
   )
@@ -49,12 +51,9 @@ def extract_hna_date(text):
 
 
 def scrape_schedule():
-  print("Fetching schedule across 2026 and 2027...")
+  print("Fetching monthly schedules...")
   schedule_data = {"last_game": None, "upcoming_games": []}
   seen_games = set()
-
-  # Cutoff logic: current date for filtering completed games
-  today = datetime.datetime.now()
 
   for year in YEARS:
     for month in MONTHS:
@@ -80,13 +79,13 @@ def scrape_schedule():
           raw_row_text = " ".join(cols).strip()
           row_upper = raw_row_text.upper()
 
-          # Check for date block headers
+          # Check for date block headers (e.g. "Wednesday, Oct 14, 2026")
           found_date = extract_hna_date(raw_row_text)
           if found_date:
             current_date = found_date
             continue
 
-          # Skip table headers, summary rows, or completed games with score indicators
+          # Skip table header/footer noise
           if any(
               kw in row_upper
               for kw in [
@@ -95,61 +94,54 @@ def scrape_schedule():
                   "HOME",
                   "RECORD:",
                   "LAST:",
-                  "FINAL",
                   "CANCELLED",
                   "POSTPONED",
               ]
           ):
             continue
 
-          # Ignore completed games (rows showing numerical scores like '4 - 2' or '3-1')
-          if re.search(r"\b\d+\s*-\s*\d+\b", raw_row_text):
+          # Ignore completed games with scores (e.g., '4 - 2')
+          if re.search(r"\b\d+\s*-\s*\d+\b", raw_row_text) or "FINAL" in row_upper:
             continue
 
-          # Check if time column exists (e.g., '10:20 PM')
-          time_match = re.search(r"\b\d{1,2}:\d{2}\s*(?:AM|PM)\b", row_upper)
-          if not time_match or not current_date:
+          # Only process rows where Kraken is playing
+          if "KRAKEN" not in row_upper:
             continue
 
-          time_str = time_match.group(0)
+          # Ensure we have enough table columns to map visitor, home, location
+          if len(cols) >= 5:
+            # Monthly schedule table cell structure:
+            # cols[1] = Time, cols[2] = Visitor, cols[3] = Home, cols[4] = Location
+            time_str = cols[1] if ("AM" in cols[1].upper() or "PM" in cols[1].upper()) else ""
+            visitor_raw = cols[2]
+            home_raw = cols[3]
+            location_raw = cols[4]
 
-          # Parse column elements when available
-          visitor_team = clean_team_name(cols[2]) if len(cols) > 2 else ""
-          home_team = clean_team_name(cols[3]) if len(cols) > 3 else ""
-          location = cols[4] if len(cols) > 4 else "Local Rink"
+            # If time wasn't in cell 1, try regex search across row
+            if not time_str:
+              time_match = re.search(r"\b\d{1,2}:\d{2}\s*(?:AM|PM)\b", row_upper)
+              time_str = time_match.group(0) if time_match else ""
 
-          # Fallbacks if column indexes shift
-          if not visitor_team or not home_team:
-            teams = [
-                c for c in cols if " VS " in c.upper() or " AT " in c.upper()
-            ]
-            if teams:
-              parts = re.split(
-                  r"\s+(?:VS|AT)\s+", teams[0], flags=re.IGNORECASE
-              )
-              if len(parts) >= 2:
-                visitor_team, home_team = clean_team_name(
-                    parts[0]
-                ), clean_team_name(parts[1])
+            away_team = clean_team_name(visitor_raw)
+            home_team = clean_team_name(home_raw)
 
-          # Validate team relevance
-          if "KRAKEN" not in (
-              visitor_team + home_team + raw_row_text
-          ).upper():
-            continue
+            # Skip if parsing failed to extract valid team names
+            if not away_team or not home_team:
+              continue
 
-          game_obj = {
-              "date": current_date,
-              "time": time_str,
-              "home_team": home_team or "Kraken Beers",
-              "away_team": visitor_team or "Opponent",
-              "location": location,
-          }
+            game_obj = {
+                "date": current_date or "TBD",
+                "time": time_str,
+                "home_team": home_team,
+                "away_team": away_team,
+                "location": location_raw or "Local Rink",
+            }
 
-          game_signature = f"{game_obj['date']}_{game_obj['time']}_{game_obj['home_team']}_{game_obj['away_team']}"
-          if game_signature not in seen_games:
-            seen_games.add(game_signature)
-            schedule_data["upcoming_games"].append(game_obj)
+            # Deduplicate across month fetches
+            game_signature = f"{game_obj['date']}_{game_obj['time']}_{game_obj['home_team']}_{game_obj['away_team']}"
+            if game_signature not in seen_games:
+              seen_games.add(game_signature)
+              schedule_data["upcoming_games"].append(game_obj)
 
       except Exception as e:
         print(f"Skipping month {month}/{year}: {e}")
@@ -157,10 +149,7 @@ def scrape_schedule():
   with open("schedule.json", "w") as f:
     json.dump(schedule_data, f, indent=2)
 
-  print(
-      f"Schedule complete! Saved"
-      f" {len(schedule_data['upcoming_games'])} upcoming games."
-  )
+  print(f"Schedule complete! Saved {len(schedule_data['upcoming_games'])} games.")
 
 
 if __name__ == "__main__":
