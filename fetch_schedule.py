@@ -21,10 +21,27 @@ def clean_team_name(name):
     if not name:
         return ""
 
-    cleaned = re.sub(r"\bF\b", "", name, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\s+", " ", cleaned)
+    name = re.sub(r"\bF\b", "", name, flags=re.IGNORECASE)
+    name = re.sub(r"\s+", " ", name)
 
-    return cleaned.strip()
+    return name.strip()
+
+
+def extract_next_game_date(text):
+    """
+    Extract:
+    Next: Sep. 29, 2026 at 10:20 PM
+    """
+
+    match = re.search(
+        r"Next:\s*([A-Za-z]{3,4}\.\s*\d{1,2},\s*\d{4})",
+        text
+    )
+
+    if match:
+        return match.group(1).strip()
+
+    return ""
 
 
 def scrape_schedule():
@@ -42,42 +59,28 @@ def scrape_schedule():
             timeout=30
         )
 
-        print(f"Status Code: {response.status_code}")
-        print(f"Final URL: {response.url}")
-        print(f"HTML Length: {len(response.text)}")
-
         response.raise_for_status()
-
-        with open("hna_debug.html", "w", encoding="utf-8") as f:
-            f.write(response.text)
-
-        print("Saved hna_debug.html")
 
         soup = BeautifulSoup(
             response.text,
             "html.parser"
         )
 
-        print("\n========================")
-        print("ALL TABLE ROWS")
-        print("========================\n")
-
         rows = soup.find_all("tr")
 
-        for i, row in enumerate(rows):
-            cols = [
-                td.get_text(" ", strip=True)
-                for td in row.find_all(["td", "th"])
-            ]
+        game_date = ""
 
-            if cols:
-                print(f"ROW {i}: {cols}")
+        #
+        # Get date from summary row
+        #
+        for row in rows:
+            text = row.get_text(" ", strip=True)
 
-        print("\n========================")
-        print("END TABLE ROWS")
-        print("========================\n")
+            if "Next:" in text:
+                game_date = extract_next_game_date(text)
+                break
 
-        current_date = ""
+        seen = set()
 
         for row in rows:
 
@@ -86,55 +89,57 @@ def scrape_schedule():
                 for td in row.find_all(["td", "th"])
             ]
 
-            if not cols:
+            if len(cols) < 7:
                 continue
 
-            row_text = " ".join(cols)
+            #
+            # Skip headers
+            #
+            if cols[0].upper() in ["TIME", "RESULT"\]:
+                continue
 
-            date_match = re.search(
-                r"(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+"
-                r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)"
-                r"\s+\d{1,2}",
-                row_text,
+            #
+            # Find rows beginning with a time
+            #
+            if not re.match(
+                r"^\d{1,2}:\d{2}\s*(AM|PM)$",
+                cols[0],
                 re.IGNORECASE
-            )
-
-            if date_match:
-                current_date = date_match.group(0)
+            ):
                 continue
-
-            time_match = re.search(
-                r"\b\d{1,2}:\d{2}\s*(AM|PM)\b",
-                row_text,
-                re.IGNORECASE
-            )
-
-            if not time_match:
-                continue
-
-            print(f"GAME ROW FOUND: {cols}")
 
             game = {
-                "date": current_date,
-                "time": time_match.group(0),
-                "raw_columns": cols
+                "date": game_date,
+                "time": cols[0],
+                "away_team": clean_team_name(cols[2]),
+                "home_team": clean_team_name(cols[4]),
+                "location": cols[6]
             }
 
-            schedule_data["upcoming_games"].append(game)
+            signature = (
+                f"{game['date']}|"
+                f"{game['time']}|"
+                f"{game['away_team']}|"
+                f"{game['home_team']}"
+            )
+
+            if signature not in seen:
+                seen.add(signature)
+                schedule_data["upcoming_games"].append(game)
 
         with open("schedule.json", "w") as f:
             json.dump(
                 schedule_data,
                 f,
                 indent=2
-            )
+           )
 
         print(
             f"Saved {len(schedule_data['upcoming_games'])} games"
         )
 
     except Exception as e:
-        print(f"ERROR: {e}")
+        print(f"Error: {e}")
 
 
 if __name__ == "__main__":
