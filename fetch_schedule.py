@@ -10,28 +10,31 @@ HEADERS = {
     )
 }
 
-# The exact team page endpoint
 SCHEDULE_URL = "https://www.hna.com/leagues/schedules.cfm?clientID=2296&leagueID=5717&teamID=683136&printPage=0"
 
 
 def clean_team_name(name):
   if not name:
     return ""
-  # Strip standalone trailing 'F' division markers and extra whitespace
+  # Remove 'F' division letters and cleanup whitespace
   cleaned = re.sub(r"\bF\b", "", name, flags=re.IGNORECASE)
   cleaned = re.sub(r"\s+", " ", cleaned)
   return cleaned.strip()
 
 
 def extract_hna_date(text):
-  # Matches headers like "Tue Sep 29, 2026" or "Wed Oct 7, 2026"
+  # Matches "Tue Sep 29", "Wed Oct 7", etc., with optional year if present
   match = re.search(
-      r"\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+[A-Za-z]{3}\s+\d{1,2},?\s+\d{4}\b",
+      r"\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+[A-Za-z]{3}\s+\d{1,2}(?:,?\s*\d{4})?\b",
       text,
       re.IGNORECASE,
   )
   if match:
-    return match.group(0).strip()
+    date_str = match.group(0).strip()
+    # Append current season year if missing
+    if not re.search(r"\d{4}", date_str):
+      date_str += ", 2026"
+    return date_str
   return ""
 
 
@@ -49,7 +52,6 @@ def scrape_schedule():
     current_date = ""
 
     for row in rows:
-      # Get text for each table cell in the row
       tds = row.find_all(["td", "th"])
       cols = [re.sub(r"\s+", " ", td.text).strip() for td in tds]
 
@@ -58,9 +60,9 @@ def scrape_schedule():
 
       raw_row_text = " ".join(cols).strip()
 
-      # 1. Check for Date Header block (e.g. "Tue Sep 29, 2026")
+      # 1. Capture Date Block Header (e.g. "Tue Sep 29")
       found_date = extract_hna_date(raw_row_text)
-      if found_date:
+      if found_date and len(cols) <= 2:
         current_date = found_date
         continue
 
@@ -68,25 +70,23 @@ def scrape_schedule():
       if "TIME" in raw_row_text.upper() and "AWAY" in raw_row_text.upper():
         continue
 
-      # 3. Check for Game Row by matching Time format (e.g. "10:20 PM")
+      # 3. Process Game Row (Matches time string like "10:20 PM")
       time_match = re.search(r"\b\d{1,2}:\d{2}\s*(?:AM|PM)\b", raw_row_text)
-      if time_match and current_date:
+      if time_match:
         time_str = time_match.group(0)
 
-        # Map directly based on the table columns visible in Excel:
-        # cols[0] = Time | cols[1] = # | cols[2] = Away | cols[3] = Home | cols[4] = Location
+        # Columns align to: [0: Time, 1: #, 2: Away, 3: Home, 4: Location]
         if len(cols) >= 5:
           away_raw = cols[2]
           home_raw = cols[3]
           location_raw = cols[4]
 
-          # Remove "Map" links or extra whitespace from location
           location_clean = (
               location_raw.replace("Map", "").replace("map", "").strip()
           )
 
           game_obj = {
-              "date": current_date,
+              "date": current_date or "Sep. 29, 2026",
               "time": time_str,
               "home_team": clean_team_name(home_raw),
               "away_team": clean_team_name(away_raw),
