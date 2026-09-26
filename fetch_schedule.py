@@ -10,13 +10,14 @@ HEADERS = {
     )
 }
 
+# Queries HNA single-team schedule view
 SCHEDULE_URL = "https://www.hna.com/leagues/schedules.cfm?clientID=2296&leagueID=5717&teamID=683136&printPage=0"
 
 
 def clean_team_name(name):
   if not name:
     return ""
-  # Strip division codes (e.g., KRA F, REA F, VIP F, etc.)
+  # Remove division identifiers (e.g., KRA F, REA F, VIP F, etc.)
   cleaned = re.sub(
       r"\s+[A-Z]{2,4}\s+[A-Z0-9]\b", "", name.strip(), flags=re.IGNORECASE
   )
@@ -63,7 +64,6 @@ def scrape_schedule():
       cols = [
           re.sub(r"\s+", " ", td.text).strip()
           for td in row.find_all(["td", "th"])
-          if td.text.strip()
       ]
       if not cols:
         continue
@@ -81,7 +81,7 @@ def scrape_schedule():
         current_date = found_date
         continue
 
-      # Skip headers, cancelled games, and completed game scores
+      # Ignore headers, cancelled games, and completed games with scores
       if any(
           kw in row_upper
           for kw in ["FINAL", "RESULT", "GAME #", "RECORD:", "CANCELLED"]
@@ -90,77 +90,41 @@ def scrape_schedule():
       if re.search(r"\b\d+\s*-\s*\d+\b", raw_row_text):
         continue
 
-      # Check for time format
+      # Check for valid game time
       time_match = re.search(r"\b\d{1,2}:\d{2}\s*(?:AM|PM)\b", row_upper)
       if not time_match:
         continue
 
       time_str = time_match.group(0)
 
-      # Extract Location
+      # Standard HNA 5-Column Array: [Game #, Time, Visitor, Home, Rink/Location]
+      visitor_raw = cols[2] if len(cols) > 2 else ""
+      home_raw = cols[3] if len(cols) > 3 else ""
+
+      away_clean = clean_team_name(visitor_raw)
+      home_clean = clean_team_name(home_raw)
+
+      # Overwrite cleaned division strings for Kraken
+      if "KRAKEN" in visitor_raw.upper():
+        away_clean = "Kraken Beers"
+      if "KRAKEN" in home_raw.upper():
+        home_clean = "Kraken Beers"
+
+      # Extract location
       location = "Local Rink"
-      location_cols = []
-      for col in cols:
+      for col in reversed(cols):
         if any(
             loc_kw in col.upper()
-            for loc_kw in [
-                "RINK",
-                "WSA",
-                "PLAYLAND",
-                "ICE",
-                "CENTER",
-                "ARENA",
-            ]
+            for loc_kw in ["RINK", "WSA", "PLAYLAND", "ICE", "MAP"]
         ):
-          location_cols.append(col.replace("Map", "").strip())
-
-      if location_cols:
-        location = location_cols[0]
-
-      # Extract Teams dynamically across all columns
-      candidate_teams = []
-      for col in cols:
-        col_cleaned = clean_team_name(col)
-        # Skip time, location strings, and game numbers
-        if (
-            col_cleaned
-            and not re.search(r"\b\d{1,2}:\d{2}\b", col_cleaned)
-            and not any(
-                loc_kw in col_cleaned.upper()
-                for loc_kw in ["RINK", "WSA", "PLAYLAND", "ICE", "MAP"]
-            )
-            and not col_cleaned.isdigit()
-        ):
-          candidate_teams.append(col_cleaned)
-
-      # Determine Home vs Away
-      home_team = "Kraken Beers"
-      away_team = "Kraken Beers"
-
-      non_kraken = [
-          t for t in candidate_teams if "KRAKEN" not in t.upper()
-      ]
-      opponent = non_kraken[0] if non_kraken else "Opponent"
-
-      # Check if Kraken is Visitor or Home in raw row text
-      # Standard HNA ordering: Visitor @ Home or Visitor vs Home
-      kraken_pos = row_upper.find("KRAKEN")
-      opp_pos = row_upper.find(opponent.upper()) if opponent != "Opponent" else -1
-
-      if opp_pos != -1 and opp_pos < kraken_pos:
-        # Opponent appears first -> Opponent is Away, Kraken is Home
-        away_team = opponent
-        home_team = "Kraken Beers"
-      else:
-        # Kraken appears first -> Kraken is Away, Opponent is Home
-        away_team = "Kraken Beers"
-        home_team = opponent
+          location = col.replace("Map", "").strip()
+          break
 
       game_obj = {
           "date": current_date or "TBD",
           "time": time_str,
-          "home_team": home_team,
-          "away_team": away_team,
+          "home_team": home_clean or "Opponent",
+          "away_team": away_clean or "Opponent",
           "location": location,
       }
 
