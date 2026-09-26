@@ -1,122 +1,31 @@
-import json
-import re
 import requests
 from bs4 import BeautifulSoup
 
-MONTH = 10
-YEAR = 2026
-
 URL = (
-    f"https://www.hna.com/leagues/schedules.cfm"
-    f"?clientID=2296"
-    f"&leagueID=5717"
-    f"&schedType=main"
-    f"&printPage=0"
-    f"&monthID={MONTH}"
-    f"&yearID={YEAR}"
-    f"&selectedTeamID=683136"
-    f"&selectedOfficialID=0"
-    f"&gameType="
+    "https://www.hna.com/leagues/schedules.cfm"
+    "?clientID=2296"
+    "&leagueID=5717"
+    "&schedType=main"
+    "&printPage=0"
+    "&monthID=10"
+    "&yearID=2026"
+    "&selectedTeamID=683136"
+    "&selectedOfficialID=0"
+    "&gameType="
 )
 
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0 Safari/537.36"
-    ),
-    "Referer": "https://www.hna.com/",
+headers = {
+    "User-Agent": "Mozilla/5.0",
+    "Referer": "https://www.hna.com/"
 }
 
+response = requests.get(URL, headers=headers)
 
-def clean_team_name(name):
-    name = re.sub(r"\bF\b", "", name)
-    name = re.sub(r"\s+", " ", name)
-    return name.strip()
+print("STATUS:", response.status_code)
+print("\n===== FULL PAGE TEXT =====\n")
 
+soup = BeautifulSoup(response.text, "html.parser")
 
-def scrape_schedule():
-    schedule = {
-        "last_game": None,
-        "upcoming_games": []
-    }
+print(soup.get_text("\n"))
 
-    response = requests.get(
-        URL,
-        headers=HEADERS,
-        timeout=30
-    )
-
-    print(f"Status: {response.status_code}")
-    print(f"URL: {response.url}")
-
-    response.raise_for_status()
-
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    rows = soup.find_all("tr")
-
-    print("\n===== ROW DEBUG =====\n")
-
-    for i, row in enumerate(rows):
-        cols = [
-            td.get_text(" ", strip=True)
-            for td in row.find_all(["td", "th"])
-        ]
-
-        if cols:
-            print(f"ROW {i}: {cols}")
-
-    print("\n===== END DEBUG =====\n")
-
-    seen = set()
-
-    for row in rows:
-        cols = [
-            td.get_text(" ", strip=True)
-            for td in row.find_all(["td", "th"])
-        ]
-
-        if len(cols) < 7:
-            continue
-
-        first_col = cols[0].strip().upper()
-
-        if first_col in ("TIME", "RESULT"):
-            continue
-
-        if not re.match(
-            r"^\d{1,2}:\d{2}\s*(AM|PM)$",
-            cols[0],
-            re.IGNORECASE
-        ):
-            continue
-
-        game = {
-            "date": f"{YEAR}-{MONTH:02d}",
-            "time": cols[0],
-            "away_team": clean_team_name(cols[2]),
-            "home_team": clean_team_name(cols[4]),
-            "location": cols[6]
-        }
-
-        sig = (
-            f"{game['time']}|"
-            f"{game['away_team']}|"
-            f"{game['home_team']}"
-        )
-
-        if sig not in seen:
-            seen.add(sig)
-            schedule["upcoming_games"].append(game)
-
-    with open("schedule.json", "w") as f:
-        json.dump(schedule, f, indent=2)
-
-    print(
-        f"Saved {len(schedule['upcoming_games'])} games"
-    )
-
-
-if __name__ == "__main__":
-    scrape_schedule()
+print("\n===== END PAGE TEXT =====\n")
