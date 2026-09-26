@@ -95,7 +95,7 @@ def scrape_schedule():
             #
             # Skip headers
             #
-            if cols[0].upper() in ["TIME", "RESULT"\]:
+            if cols[0].strip().upper() in ("TIME", "RESULT"):
                 continue
 
             #
