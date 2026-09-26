@@ -1,10 +1,10 @@
-
-import re
 import json
-import requests
-
-from bs4 import BeautifulSoup
+import re
 from datetime import datetime
+from pathlib import Path
+
+import requests
+from bs4 import BeautifulSoup
 
 
 # ============================================================
@@ -15,38 +15,35 @@ BASE_URL = "https://www.hna.com/leagues/schedules.cfm"
 
 CLIENT_ID = "2296"
 LEAGUE_ID = "5717"
-TEAM_ID = "683136"          # Kraken Beers
+TEAM_ID = "683136"
 
 OUTPUT_FILE = "schedule.json"
-
 
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/154.0 Safari/537.36"
+        "Chrome/120.0 Safari/537.36"
     ),
     "Referer": "https://www.hna.com/",
     "Accept": (
         "text/html,application/xhtml+xml,"
-        "application/xml;q=0.9,image/avif,image/webp,"
-        "*/*;q=0.8"
+        "application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
     ),
 }
 
 
-session = requests.Session()
-session.headers.update(HEADERS)
-
-
 # ============================================================
-# FETCH HNA PAGE
+# HTTP
 # ============================================================
 
 def get_page(params):
-    response = session.get(
+    """Download one HNA schedule page."""
+
+    response = requests.get(
         BASE_URL,
         params=params,
+        headers=HEADERS,
         timeout=30,
     )
 
@@ -56,280 +53,335 @@ def get_page(params):
 
 
 # ============================================================
-# FIND AVAILABLE MONTHS
-#
-# HNA uses values such as:
-#
-#   9,2026
-#   10,2026
-#
-# These are month selectors, NOT game dates.
+# MONTH DISCOVERY
 # ============================================================
 
 def get_month_options(html):
+    """
+    Find all available month options from the HNA page.
+
+    Returns a list such as:
+        [
+            ("9,2026", "September 2026"),
+            ("10,2026", "October 2026"),
+        ]
+    """
+
     soup = BeautifulSoup(html, "html.parser")
 
     months = []
 
-    month_select = soup.find(
-        "select",
-        {"name": "monthID"}
-    )
+    for option in soup.find_all("option"):
+        value = (option.get("value") or "").strip()
+        text = option.get_text(" ", strip=True)
 
-    if not month_select:
-        return months
-
-    for option in month_select.find_all("option"):
-        value = option.get("value", "").strip()
-
+        # HNA month values look like:
+        # 9,2026
+        # 10,2026
         if re.fullmatch(r"\d{1,2},\d{4}", value):
-            if value not in months:
-                months.append(value)
+            if (value, text) not in months:
+                months.append((value, text))
 
     return months
 
 
 # ============================================================
-# PARSE DATE HEADING
-#
-# HNA uses headings such as:
-#
-#   Tue Sep 22, 2026
-#   Tue Sep 29, 2026
+# DATE PARSING
 # ============================================================
 
 def parse_date_heading(text):
+    """
+    Convert HNA date headings such as:
 
-    if not text:
-        return None
+        Tue Sep 22, 2026
 
-    text = re.sub(
-        r"\s+",
-        " ",
-        text
-    ).strip()
+    into:
 
-    match = re.search(
-        r"(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+"
-        r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
-        r"(\d{1,2}),\s*(\d{4})",
-        text
-    )
+        2026-09-22
 
-    if not match:
-        return None
+    We keep dates internally in ISO format because that makes
+    sorting and comparisons reliable.
+    """
 
-    try:
-        dt = datetime.strptime(
-            match.group(0),
-            "%a %b %d, %Y"
-        )
+    text = " ".join(text.split())
 
-        return dt.strftime("%Y-%m-%d")
+    patterns = [
+        "%a %b %d, %Y",
+        "%A %B %d, %Y",
+        "%b %d, %Y",
+        "%B %d, %Y",
+    ]
 
-    except ValueError:
-        return None
+    for pattern in patterns:
+        try:
+            dt = datetime.strptime(text, pattern)
+            return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+
+    return None
+
+
+def format_display_date(date_string):
+    """
+    Convert an internal ISO date:
+
+        2026-09-29
+
+    into the human-readable format:
+
+        Tuesday, September 29, 2026
+    """
+
+    dt = datetime.strptime(date_string, "%Y-%m-%d")
+
+    # Using dt.day instead of %-d makes this work on Windows too.
+    return f"{dt.strftime('%A, %B')} {dt.day}, {dt.year}"
 
 
 # ============================================================
-# FIND DATE FOR A GAME TABLE
+# DATE / TABLE ASSOCIATION
 # ============================================================
 
 def find_date_for_table(table):
+    """
+    Find the date heading associated with a schedule table.
 
-    heading = table.find_previous("h5")
+    HNA puts the date in an <h5> outside the actual <td> cells,
+    so we walk backward through previous elements until we find
+    a recognizable date heading.
+    """
 
-    if not heading:
-        return None
+    # First look at previous h5 elements.
+    for heading in table.find_all_previous("h5"):
+        text = heading.get_text(" ", strip=True)
 
-    return parse_date_heading(
-        heading.get_text(" ", strip=True)
-    )
+        parsed = parse_date_heading(text)
+
+        if parsed:
+            return parsed
+
+    # Fallback: walk through previous elements.
+    current = table
+
+    for _ in range(100):
+        current = current.find_previous()
+
+        if current is None:
+            break
+
+        text = current.get_text(" ", strip=True)
+
+        if len(text) > 100:
+            continue
+
+        parsed = parse_date_heading(text)
+
+        if parsed:
+            return parsed
+
+    return None
 
 
 # ============================================================
-# GET UNIQUE TEAMS FROM A GAME ROW
-#
-# IMPORTANT:
-#
-# HNA provides TWO links for each team:
-#
-# Desktop:
-#   Hurricanes
-#
-# Mobile:
-#   CANE
-#
-# They have the SAME teamID.
-#
-# We therefore group links by teamID and keep only
-# one team record.
+# TEAM EXTRACTION
 # ============================================================
 
 def get_teams_from_row(row):
+    """
+    Extract the two teams from a game row.
 
-    teams = []
+    HNA includes both desktop and mobile versions of team links.
 
-    seen_team_ids = set()
+    For example, Kraken Beers may appear as:
 
-    for anchor in row.find_all("a", href=True):
+        Kraken Beers
+        KRA
 
-        href = anchor.get("href", "")
+    Both links have the same teamID.
 
-        match = re.search(
-            r"teamID=(\d+)",
-            href,
-            re.IGNORECASE
-        )
+    We group links by teamID so they are treated as ONE team.
+    """
+
+    teams_by_id = {}
+
+    for link in row.find_all("a"):
+        href = link.get("href", "")
+
+        match = re.search(r"teamID=(\d+)", href, re.IGNORECASE)
 
         if not match:
             continue
 
         team_id = match.group(1)
 
-        if team_id in seen_team_ids:
-            continue
+        # Look for the visible desktop team name.
+        span = link.find("span")
 
-        seen_team_ids.add(team_id)
-
-        # Prefer the desktop team name.
-        desktop_span = anchor.find_parent(
-            "span",
-            class_=lambda c: c and "d-sm-inline" in c
-        )
-
-        if desktop_span:
-            name_anchor = desktop_span.find(
-                "a",
-                href=True
-            )
-
-            if name_anchor:
-                name = name_anchor.get_text(
-                    " ",
-                    strip=True
-                )
-            else:
-                name = anchor.get_text(
-                    " ",
-                    strip=True
-                )
+        if span:
+            name = span.get_text(" ", strip=True)
         else:
-            name = anchor.get_text(
-                " ",
-                strip=True
-            )
+            name = link.get_text(" ", strip=True)
 
-        name = re.sub(
-            r"\s+",
-            " ",
-            name
-        ).strip()
+        name = " ".join(name.split())
 
         if not name:
             continue
 
-        teams.append({
-            "team_id": team_id,
-            "name": name,
-        })
+        if team_id not in teams_by_id:
+            teams_by_id[team_id] = []
+
+        if name not in teams_by_id[team_id]:
+            teams_by_id[team_id].append(name)
+
+    teams = []
+
+    for team_id, names in teams_by_id.items():
+        # Prefer the longer/full team name over the abbreviation.
+        name = max(names, key=len)
+
+        teams.append(
+            {
+                "team_id": team_id,
+                "name": name,
+            }
+        )
 
     return teams
 
 
 # ============================================================
-# PARSE ONE MONTH
+# GAME ROW PARSING
 # ============================================================
 
 def parse_month(html):
+    """
+    Parse all Kraken Beers games from one month's HNA page.
 
-    soup = BeautifulSoup(
-        html,
-        "html.parser"
-    )
+    Returns a list of games using ISO dates internally.
+    """
+
+    soup = BeautifulSoup(html, "html.parser")
 
     games = []
 
     for table in soup.find_all("table"):
+        date = find_date_for_table(table)
 
-        game_date = find_date_for_table(table)
-
-        if not game_date:
+        if not date:
             continue
 
         for row in table.find_all("tr"):
-
-            teams = get_teams_from_row(row)
-
-            # A game needs exactly two unique teams.
-            if len(teams) != 2:
-                continue
-
-            # Make sure Kraken Beers is one of them.
-            if not any(
-                team["team_id"] == TEAM_ID
-                for team in teams
-            ):
-                continue
-
             cells = row.find_all("td")
 
-            if len(cells) < 7:
+            if not cells:
                 continue
 
-            cell_text = [
-                re.sub(
-                    r"\s+",
-                    " ",
-                    cell.get_text(
-                        " ",
-                        strip=True
-                    )
-                ).strip()
+            values = [
+                " ".join(cell.get_text(" ", strip=True).split())
                 for cell in cells
             ]
 
-            status_or_time = cell_text[0]
-            location = cell_text[6]
+            if len(values) < 5:
+                continue
+
+            teams = get_teams_from_row(row)
+
+            # We need exactly two identifiable teams.
+            if len(teams) != 2:
+                continue
+
+            team_ids = {team["team_id"] for team in teams}
+
+            # Ignore rows that don't involve Kraken Beers.
+            if TEAM_ID not in team_ids:
+                continue
+
+            # ------------------------------------------------
+            # Determine the two teams.
+            # HNA's row format is:
+            #
+            # status
+            # game #
+            # away team
+            # away score
+            # home team
+            # home score
+            # location
+            # ...
+            # ------------------------------------------------
 
             away_team = teams[0]["name"]
             home_team = teams[1]["name"]
 
-            # ------------------------------------------------
-            # Determine whether game is final.
-            # ------------------------------------------------
+            # Determine which team appears first/second in
+            # the actual row using the team links.
+            team_links = []
 
-            is_final = bool(
-                re.search(
-                    r"\bFinal\b",
-                    status_or_time,
-                    re.IGNORECASE
+            for link in row.find_all("a"):
+                href = link.get("href", "")
+
+                match = re.search(
+                    r"teamID=(\d+)",
+                    href,
+                    re.IGNORECASE,
                 )
-            )
+
+                if not match:
+                    continue
+
+                team_id = match.group(1)
+
+                if team_id not in [t["team_id"] for t in teams]:
+                    continue
+
+                # Ignore duplicate mobile/desktop links.
+                if team_id not in team_links:
+                    team_links.append(team_id)
+
+            if len(team_links) != 2:
+                continue
+
+            team_lookup = {
+                team["team_id"]: team["name"]
+                for team in teams
+            }
+
+            away_team = team_lookup[team_links[0]]
+            home_team = team_lookup[team_links[1]]
 
             # ------------------------------------------------
-            # Extract scheduled time.
+            # Time
             # ------------------------------------------------
 
-            time_match = re.search(
-                r"\d{1,2}:\d{2}\s*(AM|PM)",
-                status_or_time,
-                re.IGNORECASE
-            )
+            time_value = values[0] if values else ""
 
-            game_time = (
-                time_match.group(0)
-                if time_match
-                else ""
-            )
+            # Status values such as "Final" or a time.
+            if time_value.lower() == "final":
+                time_value = ""
+            elif not re.search(r"\d{1,2}:\d{2}", time_value):
+                # Sometimes other text can occupy the first cell.
+                time_value = ""
+
+            # ------------------------------------------------
+            # Location
+            # ------------------------------------------------
+
+            location = ""
+
+            if len(values) >= 7:
+                location = values[6]
+
+            # ------------------------------------------------
+            # Save game
+            # ------------------------------------------------
 
             game = {
-                "date": game_date,
-                "time": game_time,
+                "date": date,
+                "time": time_value,
                 "away_team": away_team,
                 "home_team": home_team,
                 "location": location,
-                "_completed": is_final,
             }
 
             games.append(game)
@@ -338,118 +390,125 @@ def parse_month(html):
 
 
 # ============================================================
-# REMOVE DUPLICATES
+# DUPLICATION REMOVAL
 # ============================================================
 
 def deduplicate_games(games):
+    """Remove duplicate games that may occur in the HTML."""
 
-    seen = set()
-    unique = []
+    unique = {}
 
     for game in games:
-
         key = (
-            game["date"],
-            game["time"],
-            game["away_team"],
-            game["home_team"],
-            game["location"],
+            game.get("date", ""),
+            game.get("time", ""),
+            game.get("away_team", ""),
+            game.get("home_team", ""),
+            game.get("location", ""),
         )
 
-        if key in seen:
-            continue
+        unique[key] = game
 
-        seen.add(key)
-        unique.append(game)
-
-    return unique
+    return list(unique.values())
 
 
 # ============================================================
-# SORT GAMES
+# SORTING
 # ============================================================
 
 def game_sort_key(game):
+    """
+    Sort games by date and time.
+
+    Dates are still ISO format here.
+    """
+
+    date_string = game.get("date", "")
 
     try:
-
-        if game["time"]:
-
-            return datetime.strptime(
-                f'{game["date"]} {game["time"]}',
-                "%Y-%m-%d %I:%M %p"
-            )
-
-        return datetime.strptime(
-            game["date"],
-            "%Y-%m-%d"
+        date_value = datetime.strptime(
+            date_string,
+            "%Y-%m-%d",
         )
-
     except ValueError:
+        date_value = datetime.max
 
-        return datetime.max
+    time_string = game.get("time", "")
+
+    if not time_string:
+        time_value = datetime.min.time()
+    else:
+        try:
+            time_value = datetime.strptime(
+                time_string,
+                "%I:%M %p",
+            ).time()
+        except ValueError:
+            time_value = datetime.min.time()
+
+    return date_value, time_value
 
 
 # ============================================================
-# BUILD SCHEDULE
+# MAIN SCRAPER
 # ============================================================
 
 def fetch_schedule():
+    """
+    Fetch the complete Kraken Beers schedule.
+
+    The function:
+      1. Loads the HNA page.
+      2. Discovers all available months.
+      3. Downloads each month.
+      4. Extracts Kraken Beers games.
+      5. Sorts them chronologically.
+      6. Determines the last completed game.
+      7. Determines upcoming games.
+      8. Converts dates to human-readable format.
+    """
 
     # --------------------------------------------------------
-    # Initial request.
-    #
-    # This is your original URL:
-    #
-    # https://www.hna.com/leagues/schedules.cfm?
-    # clientID=2296&
-    # leagueID=5717&
-    # schedType=main&
-    # printPage=0
-    #
-    # We use it to discover available months.
+    # Initial page
     # --------------------------------------------------------
 
-    base_params = {
+    initial_params = {
         "clientID": CLIENT_ID,
         "leagueID": LEAGUE_ID,
         "schedType": "main",
         "printPage": "0",
+        "selectedTeamID": TEAM_ID,
     }
 
-    initial_html = get_page(
-        base_params
-    )
+    print("Loading HNA schedule...")
 
-    month_options = get_month_options(
-        initial_html
-    )
-
-    if not month_options:
-
-        raise RuntimeError(
-            "Could not find HNA month options."
-        )
-
-    print()
-    print("HNA months found:")
-
-    for month in month_options:
-        print(f"  {month}")
-
-    print()
+    initial_html = get_page(initial_params)
 
     # --------------------------------------------------------
-    # Fetch each available month for Kraken Beers.
+    # Find all months
+    # --------------------------------------------------------
+
+    months = get_month_options(initial_html)
+
+    if not months:
+        raise RuntimeError(
+            "Could not find any month options on the HNA page."
+        )
+
+    print(f"Found {len(months)} month(s):")
+
+    for month_value, month_name in months:
+        print(f"  {month_value} -> {month_name}")
+
+    # --------------------------------------------------------
+    # Fetch each month
     # --------------------------------------------------------
 
     all_games = []
 
-    for month_id in month_options:
+    for month_value, month_name in months:
 
-        print(
-            f"Fetching {month_id}..."
-        )
+        print(f"Fetching {month_name}...")
 
         params = {
             "clientID": CLIENT_ID,
@@ -457,217 +516,166 @@ def fetch_schedule():
             "schedType": "main",
             "printPage": "0",
             "selectedTeamID": TEAM_ID,
-            "monthID": month_id,
+            "monthID": month_value,
         }
 
         html = get_page(params)
 
-        month_games = parse_month(
-            html
-        )
+        month_games = parse_month(html)
 
         print(
-            f"  Found {len(month_games)} Kraken games"
+            f"  Found {len(month_games)} Kraken Beers game(s)"
         )
 
-        all_games.extend(
-            month_games
-        )
+        all_games.extend(month_games)
 
     # --------------------------------------------------------
-    # Deduplicate.
+    # Remove duplicates
     # --------------------------------------------------------
 
-    all_games = deduplicate_games(
-        all_games
-    )
+    all_games = deduplicate_games(all_games)
 
     # --------------------------------------------------------
-    # Sort chronologically.
+    # Sort chronologically
     # --------------------------------------------------------
 
-    all_games.sort(
-        key=game_sort_key
-    )
+    all_games.sort(key=game_sort_key)
+
+    if not all_games:
+        print("No Kraken Beers games found.")
+
+        return {
+            "last_game": None,
+            "upcoming_games": [],
+        }
 
     # --------------------------------------------------------
-    # Split completed/upcoming.
+    # Determine completed vs upcoming
+    #
+    # HNA uses an empty time for completed games in the rows
+    # we're interested in. We also use the presence of a score
+    # in the original page indirectly through the time/status
+    # structure.
+    #
+    # For the current HNA schedule, games with an empty time
+    # are completed and games with a time are upcoming.
     # --------------------------------------------------------
 
-    now = datetime.now()
+    completed_games = [
+        game
+        for game in all_games
+        if not game.get("time")
+    ]
 
-    completed_games = []
-    upcoming_games = []
-
-    for game in all_games:
-
-        try:
-
-            game_date = datetime.strptime(
-                game["date"],
-                "%Y-%m-%d"
-            ).date()
-
-        except ValueError:
-            continue
-
-        # HNA explicitly says Final.
-        if game["_completed"]:
-
-            completed_games.append(
-                game
-            )
-
-            continue
-
-        # Future date.
-        if game_date > now.date():
-
-            upcoming_games.append(
-                game
-            )
-
-            continue
-
-        # Past date that wasn't marked Final.
-        if game_date < now.date():
-
-            continue
-
-        # Today.
-        if game["time"]:
-
-            try:
-
-                game_datetime = datetime.strptime(
-                    f'{game["date"]} {game["time"]}',
-                    "%Y-%m-%d %I:%M %p"
-                )
-
-                if game_datetime >= now:
-
-                    upcoming_games.append(
-                        game
-                    )
-
-            except ValueError:
-
-                upcoming_games.append(
-                    game
-                )
+    upcoming_games = [
+        game
+        for game in all_games
+        if game.get("time")
+    ]
 
     # --------------------------------------------------------
-    # Most recent completed game.
+    # Last completed game
     # --------------------------------------------------------
-
-    last_game = None
 
     if completed_games:
-
-        completed_games.sort(
-            key=game_sort_key
-        )
-
-        last_game = completed_games[-1].copy()
+        last_game = completed_games[-1]
+    else:
+        last_game = None
 
     # --------------------------------------------------------
-    # Remove internal fields.
+    # Upcoming games
     # --------------------------------------------------------
 
-    for game in upcoming_games:
-        game.pop(
-            "_completed",
-            None
-        )
+    upcoming_games = upcoming_games[:5]
+
+    # --------------------------------------------------------
+    # Convert dates ONLY after sorting and filtering.
+    #
+    # This is important. The scraper internally uses:
+    #
+    #     2026-09-29
+    #
+    # because it sorts correctly.
+    #
+    # The JSON output uses:
+    #
+    #     Tuesday, September 29, 2026
+    # --------------------------------------------------------
 
     if last_game:
-        last_game.pop(
-            "_completed",
-            None
+        last_game["date"] = format_display_date(
+            last_game["date"]
+        )
+
+    for game in upcoming_games:
+        game["date"] = format_display_date(
+            game["date"]
         )
 
     # --------------------------------------------------------
-    # Final schedule object.
+    # Final JSON structure
     # --------------------------------------------------------
 
-    return {
+    schedule = {
         "last_game": last_game,
         "upcoming_games": upcoming_games,
     }
 
+    return schedule
+
 
 # ============================================================
-# WRITE schedule.json
+# SAVE JSON
 # ============================================================
 
 def save_schedule(schedule):
+    """Write the schedule to schedule.json."""
 
-    with open(
-        OUTPUT_FILE,
+    output_path = Path(OUTPUT_FILE)
+
+    with output_path.open(
         "w",
-        encoding="utf-8"
-    ) as f:
+        encoding="utf-8",
+    ) as file:
 
         json.dump(
             schedule,
-            f,
+            file,
             indent=2,
-            ensure_ascii=False
+            ensure_ascii=False,
         )
 
-        f.write("\n")
-
     print()
-    print(
-        f"Saved schedule to {OUTPUT_FILE}"
-    )
+    print(f"Saved schedule to: {output_path.resolve()}")
 
 
 # ============================================================
-# MAIN
+# RUN
 # ============================================================
 
 if __name__ == "__main__":
 
     try:
-
         schedule = fetch_schedule()
 
-        # Print result for debugging.
         print()
-        print(
-            "============================================================"
-        )
-        print(
-            "FINAL SCHEDULE"
-        )
-        print(
-            "============================================================"
-        )
-
+        print("Schedule:")
         print(
             json.dumps(
                 schedule,
                 indent=2,
-                ensure_ascii=False
+                ensure_ascii=False,
             )
         )
 
-        # IMPORTANT:
-        # Actually update schedule.json.
-        save_schedule(
-            schedule
-        )
+        save_schedule(schedule)
 
-    except Exception as e:
-
+    except requests.RequestException as error:
         print()
-        print(
-            "ERROR:"
-        )
+        print("ERROR: Could not download the HNA schedule.")
+        print(error)
 
-        print(
-            str(e)
-        )
-
-        raise
+    except Exception as error:
+        print()
+        print("ERROR:")
+        print(error)
