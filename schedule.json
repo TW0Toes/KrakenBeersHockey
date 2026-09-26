@@ -1,3 +1,11 @@
 {
-  "upcoming_games": []
+  "upcoming_games": [
+    {
+      "date": "Sep. 29, 2026",
+      "time": "10:20 PM",
+      "home_team": "Reapers",
+      "away_team": "Kraken",
+      "location": "WSA USA Rink"
+    }
+  ]
 }
