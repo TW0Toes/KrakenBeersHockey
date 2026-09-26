@@ -7,7 +7,7 @@ MONTH = 10
 YEAR = 2026
 
 URL = (
-    "https://www.hna.com/leagues/schedules.cfm"
+    f"https://www.hna.com/leagues/schedules.cfm"
     f"?clientID=2296"
     f"&leagueID=5717"
     f"&schedType=main"
@@ -47,8 +47,8 @@ def scrape_schedule():
         timeout=30
     )
 
-    print("Status:", response.status_code)
-    print("URL:", response.url)
+    print(f"Status: {response.status_code}")
+    print(f"URL: {response.url}")
 
     response.raise_for_status()
 
@@ -58,23 +58,20 @@ def scrape_schedule():
 
     print("\n===== ROW DEBUG =====\n")
 
-for i, row in enumerate(rows):
-    cols = [
-        td.get_text(" ", strip=True)
-        for td in row.find_all(["td", "th"])
-    ]
+    for i, row in enumerate(rows):
+        cols = [
+            td.get_text(" ", strip=True)
+            for td in row.find_all(["td", "th"])
+        ]
 
-    if cols:
-        print(f"ROW {i}: {cols}")
+        if cols:
+            print(f"ROW {i}: {cols}")
 
-print("\n===== END DEBUG =====\n")
-
-    print(f"Found {len(rows)} rows")
+    print("\n===== END DEBUG =====\n")
 
     seen = set()
 
     for row in rows:
-
         cols = [
             td.get_text(" ", strip=True)
             for td in row.find_all(["td", "th"])
@@ -83,16 +80,16 @@ print("\n===== END DEBUG =====\n")
         if len(cols) < 7:
             continue
 
-        if cols[0].upper() in ("TIME", "RESULT"):
+        first_col = cols[0].strip().upper()
+
+        if first_col in ("TIME", "RESULT"):
             continue
 
-        time_match = re.match(
+        if not re.match(
             r"^\d{1,2}:\d{2}\s*(AM|PM)$",
             cols[0],
             re.IGNORECASE
-        )
-
-        if not time_match:
+        ):
             continue
 
         game = {
