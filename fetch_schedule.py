@@ -1,14 +1,18 @@
+```python
 import requests
 from bs4 import BeautifulSoup
+import re
 
 
-URL = (
-    "https://www.hna.com/leagues/schedules.cfm"
-    "?clientID=2296"
-    "&leagueID=5717"
-    "&schedType=main"
-    "&printPage=0"
-)
+BASE_URL = "https://www.hna.com/leagues/schedules.cfm"
+
+PARAMS = {
+    "clientID": "2296",
+    "leagueID": "5717",
+    "schedType": "main",
+    "printPage": "0",
+}
+
 
 HEADERS = {
     "User-Agent": (
@@ -24,19 +28,49 @@ HEADERS = {
 }
 
 
+TEAM_NAME = "Kraken Beers"
+TEAM_ID = "683136"
+
+
+def clean_text(text):
+    """Collapse whitespace."""
+    return " ".join(text.split())
+
+
+def print_limited(text, limit=12000):
+    """Print text without flooding GitHub Actions."""
+    text = str(text)
+
+    if len(text) > limit:
+        print(text[:limit])
+        print(f"\n... [truncated at {limit:,} characters]")
+    else:
+        print(text)
+
+
 def main():
-    print("Fetching HNA schedule...")
+
+    print("=" * 70)
+    print("KRAKEN BEERS HOCKEY SCHEDULE DEBUG")
+    print("=" * 70)
+
+    # ------------------------------------------------------------
+    # 1. Fetch normal schedule page
+    # ------------------------------------------------------------
+
+    print("\nFetching HNA schedule...")
 
     response = requests.get(
-        URL,
+        BASE_URL,
+        params=PARAMS,
         headers=HEADERS,
         timeout=30,
         allow_redirects=True,
     )
 
-    print(f"Status: {response.status_code}")
-    print(f"Final URL: {response.url}")
-    print(f"Response length: {len(response.text):,} characters")
+    print("Status:", response.status_code)
+    print("URL:", response.url)
+    print("Response length:", f"{len(response.text):,}")
 
     response.raise_for_status()
 
@@ -44,281 +78,401 @@ def main():
 
 
     # ------------------------------------------------------------
-    # 1. Basic page information
+    # 2. Basic page information
     # ------------------------------------------------------------
 
-    print("\n=== PAGE INFO ===")
+    print("\n" + "=" * 70)
+    print("PAGE INFO")
+    print("=" * 70)
 
     if soup.title:
         print("Title:", soup.title.get_text(" ", strip=True))
-    else:
-        print("Title: <none>")
 
+    # Selected season
+    season_select = soup.find(
+        "select",
+        {"name": "sel_ChildSeason"}
+    )
 
-    # ------------------------------------------------------------
-    # 2. Look for obvious date elements
-    # ------------------------------------------------------------
+    if season_select:
+        selected = season_select.find("option", selected=True)
 
-    print("\n=== DATE-RELATED ELEMENTS ===")
-
-    date_elements = []
-
-    for element in soup.find_all(True):
-        element_id = str(element.get("id", "")).lower()
-
-        classes = element.get("class", [])
-        class_text = " ".join(classes).lower()
-
-        name = str(element.get("name", "")).lower()
-
-        if (
-            "date" in element_id
-            or "date" in class_text
-            or "date" in name
-        ):
-            text = element.get_text(" ", strip=True)
-
-            # Ignore huge containers.
-            if text and len(text) < 500:
-                date_elements.append(element)
-
-    if date_elements:
-        for element in date_elements[:20]:
+        if selected:
             print(
-                f"TAG={element.name} "
-                f"ID={element.get('id')} "
-                f"CLASS={element.get('class')}"
-            )
-            print("TEXT:", element.get_text(" ", strip=True))
-    else:
-        print("No obvious date elements found.")
-
-
-    # ------------------------------------------------------------
-    # 3. Look for date-related attributes
-    # ------------------------------------------------------------
-
-    print("\n=== DATE-RELATED ATTRIBUTES ===")
-
-    attribute_count = 0
-
-    for element in soup.find_all(True):
-
-        for attribute, value in element.attrs.items():
-
-            if "date" not in attribute.lower():
-                continue
-
-            print(
-                f"TAG={element.name} "
-                f"ATTRIBUTE={attribute} "
-                f"VALUE={value}"
+                "Season:",
+                selected.get_text(" ", strip=True)
             )
 
-            attribute_count += 1
+    # Selected month
+    month_select = soup.find(
+        "select",
+        {"name": "monthID"}
+    )
 
-            if attribute_count >= 20:
-                break
+    if month_select:
+        selected = month_select.find("option", selected=True)
 
-        if attribute_count >= 20:
-            break
-
-    if attribute_count == 0:
-        print("No date-related attributes found.")
+        if selected:
+            print(
+                "Month:",
+                selected.get_text(" ", strip=True),
+                "| value:",
+                selected.get("value")
+            )
 
 
     # ------------------------------------------------------------
-    # 4. Find the Chiefs game and show its HTML hierarchy
+    # 3. Verify Kraken Beers exists in team selector
     # ------------------------------------------------------------
 
-    print("\n=== CHIEFS GAME HTML ===")
+    print("\n" + "=" * 70)
+    print("KRAKEN TEAM ID")
+    print("=" * 70)
 
-    chiefs_node = None
+    team_option = soup.find(
+        "option",
+        string=lambda s: s and TEAM_NAME.lower() in s.lower()
+    )
 
-    for text_node in soup.find_all(
-        string=lambda s: s and "Chiefs" in s
-    ):
-        chiefs_node = text_node.parent
-        break
-
-    if chiefs_node is None:
-        print("Could not find 'Chiefs' on the page.")
-
+    if team_option:
+        print("Team:", team_option.get_text(" ", strip=True))
+        print("Team ID:", team_option.get("value"))
     else:
-        print("Found:", chiefs_node.get_text(" ", strip=True))
-
-        current = chiefs_node
-
-        for level in range(1, 4):
-
-            current = current.parent
-
-            if current is None:
-                break
-
-            print(f"\n--- PARENT LEVEL {level} ---")
-
-            # Limit output so GitHub Actions doesn't explode.
-            html = current.prettify()
-
-            if len(html) > 8000:
-                html = html[:8000] + "\n... [truncated]"
-
-            print(html)
+        print("Could not find Kraken Beers in team selector.")
 
 
     # ------------------------------------------------------------
-    # 5. Show the schedule rows in a compact format
+    # 4. Find the ACTUAL schedule row containing Kraken Beers
     # ------------------------------------------------------------
 
-    print("\n=== SCHEDULE ROWS ===")
+    print("\n" + "=" * 70)
+    print("KRAKEN BEERS GAME ROWS")
+    print("=" * 70)
 
-    rows = soup.find_all("tr")
+    kraken_rows = []
 
-    schedule_row_count = 0
+    for row_number, row in enumerate(soup.find_all("tr")):
 
-    for i, row in enumerate(rows):
+        row_text = clean_text(
+            row.get_text(" ", strip=True)
+        )
+
+        if TEAM_NAME.lower() in row_text.lower():
+            kraken_rows.append((row_number, row))
+
+    print(
+        f"Found {len(kraken_rows)} table row(s) containing "
+        f"'{TEAM_NAME}'."
+    )
+
+
+    if not kraken_rows:
+        print("\nERROR: No Kraken Beers game rows found.")
+
+        print("\nSearching raw page text for Kraken Beers...")
+
+        if TEAM_NAME.lower() in response.text.lower():
+            print(
+                "Kraken Beers DOES exist in the HTML, "
+                "but not inside a <tr>."
+            )
+        else:
+            print("Kraken Beers was not found in the HTML at all.")
+
+        return
+
+
+    # ------------------------------------------------------------
+    # 5. Print each actual Kraken game row
+    # ------------------------------------------------------------
+
+    for index, (row_number, row) in enumerate(kraken_rows, start=1):
+
+        print("\n" + "-" * 70)
+        print(f"KRAKEN GAME #{index}")
+        print("TABLE ROW NUMBER:", row_number)
+        print("-" * 70)
 
         cells = [
-            cell.get_text(" ", strip=True)
+            clean_text(cell.get_text(" ", strip=True))
             for cell in row.find_all(["td", "th"])
         ]
 
-        if not cells:
-            continue
+        print("CELLS:")
+        print(cells)
 
-        # Only show rows that look like schedule data.
-        schedule_words = [
-            "Chiefs",
-            "Hurricanes",
-            "Kraken",
-            "Rye",
-            "Wolves",
-            "Mavericks",
-            "Invaders",
-            "Growlers",
-        ]
+        print("\nRAW ROW HTML:")
+        print_limited(row.prettify(), 8000)
 
-        if any(
-            word.lower() in " ".join(cells).lower()
-            for word in schedule_words
-        ):
-            print(f"ROW {i}: {cells}")
-            schedule_row_count += 1
 
-    print(f"\nSchedule rows found: {schedule_row_count}")
+        # --------------------------------------------------------
+        # 6. Inspect neighboring rows
+        # --------------------------------------------------------
+
+        print("\nNEIGHBORING ROWS:")
+
+        previous_rows = []
+        current = row
+
+        for _ in range(3):
+            current = current.find_previous("tr")
+
+            if current:
+                previous_rows.append(current)
+            else:
+                break
+
+        previous_rows.reverse()
+
+        for prev in previous_rows:
+            text = clean_text(
+                prev.get_text(" ", strip=True)
+            )
+
+            print("PREVIOUS:", repr(text))
+
+
+        next_rows = []
+
+        current = row
+
+        for _ in range(3):
+            current = current.find_next("tr")
+
+            if current:
+                next_rows.append(current)
+            else:
+                break
+
+        for nxt in next_rows:
+            text = clean_text(
+                nxt.get_text(" ", strip=True)
+            )
+
+            print("NEXT:", repr(text))
+
+
+        # --------------------------------------------------------
+        # 7. Inspect the parent table
+        # --------------------------------------------------------
+
+        table = row.find_parent("table")
+
+        if table:
+
+            print("\nPARENT TABLE SUMMARY:")
+
+            table_text = clean_text(
+                table.get_text(" ", strip=True)
+            )
+
+            print_limited(table_text, 5000)
+
+            print("\nPARENT TABLE HTML:")
+
+            print_limited(
+                table.prettify(),
+                20000
+            )
+
+
+        # --------------------------------------------------------
+        # 8. Inspect elements immediately preceding the table
+        # --------------------------------------------------------
+
+        if table:
+
+            print("\nELEMENTS BEFORE TABLE:")
+
+            element = table
+
+            for level in range(1, 6):
+
+                element = element.find_previous()
+
+                if not element:
+                    break
+
+                text = clean_text(
+                    element.get_text(" ", strip=True)
+                )
+
+                if text and len(text) < 300:
+
+                    print(
+                        f"LEVEL {level}: "
+                        f"<{element.name}> "
+                        f"{repr(text)}"
+                    )
 
 
     # ------------------------------------------------------------
-    # 6. Search raw HTML for years/months
+    # 9. Search page for date-like strings
     # ------------------------------------------------------------
 
-    print("\n=== DATE SEARCH IN RAW HTML ===")
+    print("\n" + "=" * 70)
+    print("DATE-LIKE TEXT FOUND IN PAGE")
+    print("=" * 70)
 
-    raw_html = response.text
+    page_text = soup.get_text(" ", strip=True)
 
-    date_terms = [
-        "2024",
-        "2025",
-        "2026",
-        "2027",
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
+    date_patterns = [
+        # 9/26/2026
+        r"\b\d{1,2}/\d{1,2}/\d{4}\b",
+
+        # 09-26-2026
+        r"\b\d{1,2}-\d{1,2}-\d{4}\b",
+
+        # September 26, 2026
+        r"\b(?:January|February|March|April|May|June|July|August|"
+        r"September|October|November|December)\s+"
+        r"\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b",
+
+        # Sat September 26
+        r"\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)"
+        r"\w*,?\s+"
+        r"(?:January|February|March|April|May|June|July|August|"
+        r"September|October|November|December)\s+\d{1,2}\b",
     ]
 
-    found_terms = set()
+    dates_found = set()
 
-    for term in date_terms:
+    for pattern in date_patterns:
 
-        position = raw_html.lower().find(term.lower())
-
-        if position == -1:
-            continue
-
-        # Avoid printing the same area repeatedly.
-        context_start = max(0, position - 250)
-        context_end = min(
-            len(raw_html),
-            position + 500
+        matches = re.findall(
+            pattern,
+            page_text,
+            flags=re.IGNORECASE
         )
 
-        context = raw_html[context_start:context_end]
+        for match in matches:
+            dates_found.add(match)
 
-        # Strip excessive whitespace.
-        context = " ".join(context.split())
+    if dates_found:
 
-        print(f"\nFound '{term}':")
-        print(context[:750])
+        for date in sorted(dates_found):
+            print(date)
 
-        found_terms.add(term)
-
-        # We only need a few examples.
-        if len(found_terms) >= 8:
-            break
+    else:
+        print(
+            "No conventional date strings found "
+            "in visible page text."
+        )
 
 
     # ------------------------------------------------------------
-    # 7. Important: check for JavaScript date data
+    # 10. Look for likely date headings
     # ------------------------------------------------------------
 
-    print("\n=== POSSIBLE JAVASCRIPT DATE DATA ===")
+    print("\n" + "=" * 70)
+    print("POSSIBLE DATE HEADINGS")
+    print("=" * 70)
 
-    script_text = "\n".join(
-        script.get_text(" ", strip=True)
-        for script in soup.find_all("script")
+    heading_tags = soup.find_all(
+        ["h1", "h2", "h3", "h4", "h5", "h6"]
     )
 
-    javascript_terms = [
-        "schedule",
-        "gameDate",
-        "game_date",
-        "date",
-        "startDate",
-        "start_date",
-    ]
+    found_heading = False
 
-    found_js = False
+    for heading in heading_tags:
 
-    for term in javascript_terms:
-
-        position = script_text.lower().find(term.lower())
-
-        if position == -1:
-            continue
-
-        start = max(0, position - 300)
-        end = min(
-            len(script_text),
-            position + 700
+        text = clean_text(
+            heading.get_text(" ", strip=True)
         )
 
-        print(f"\nFound JavaScript term '{term}':")
-        print(script_text[start:end])
+        if text:
+            print(
+                f"<{heading.name}> {text}"
+            )
 
-        found_js = True
+            found_heading = True
 
-    if not found_js:
-        print("No obvious JavaScript date data found.")
+    if not found_heading:
+        print("No heading tags with text found.")
+
+
+    # ------------------------------------------------------------
+    # 11. Try HNA's Kraken team filter
+    # ------------------------------------------------------------
+
+    print("\n" + "=" * 70)
+    print("KRAKEN TEAM-FILTER TEST")
+    print("=" * 70)
+
+    filtered_params = {
+        "clientID": "2296",
+        "leagueID": "5717",
+        "schedType": "main",
+        "printPage": "0",
+        "selectedTeamID": TEAM_ID,
+        "monthID": "9,2026",
+    }
+
+    filtered_response = requests.get(
+        BASE_URL,
+        params=filtered_params,
+        headers=HEADERS,
+        timeout=30,
+        allow_redirects=True,
+    )
+
+    print(
+        "Filtered status:",
+        filtered_response.status_code
+    )
+
+    print(
+        "Filtered URL:",
+        filtered_response.url
+    )
+
+    print(
+        "Filtered response length:",
+        f"{len(filtered_response.text):,}"
+    )
+
+    filtered_response.raise_for_status()
+
+    filtered_soup = BeautifulSoup(
+        filtered_response.text,
+        "html.parser"
+    )
+
+    filtered_rows = []
+
+    for row_number, row in enumerate(
+        filtered_soup.find_all("tr")
+    ):
+
+        text = clean_text(
+            row.get_text(" ", strip=True)
+        )
+
+        if TEAM_NAME.lower() in text.lower():
+            filtered_rows.append(
+                (row_number, text)
+            )
+
+    print(
+        f"Kraken rows returned by team filter: "
+        f"{len(filtered_rows)}"
+    )
+
+    for row_number, text in filtered_rows:
+        print(
+            f"ROW {row_number}: {text}"
+        )
 
 
     # ------------------------------------------------------------
     # DONE
     # ------------------------------------------------------------
 
-    print("\n=== DEBUG COMPLETE ===")
-    print("The next step is to identify how HNA stores the schedule date.")
+    print("\n" + "=" * 70)
+    print("DEBUG COMPLETE")
+    print("=" * 70)
 
 
 if __name__ == "__main__":
     main()
-
+```
