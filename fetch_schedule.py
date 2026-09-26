@@ -10,8 +10,8 @@ HEADERS = {
     )
 }
 
-# HNA full schedule endpoint for the active league/season (no monthID constraint)
-SCHEDULE_URL = "https://www.hna.com/leagues/schedules.cfm?clientID=2296&leagueID=5717&schedType=main&printPage=0"
+# Explicit single-team page query for active season
+SCHEDULE_URL = "https://www.hna.com/leagues/schedules.cfm?clientID=2296&leagueID=5717&teamID=683136&printPage=0"
 
 
 def clean_team_name(name):
@@ -36,6 +36,7 @@ def extract_hna_date(text):
           r"\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+[A-Za-z]{3,4}\.?\s+\d{1,2}(?:,?\s*\d{4})?\b"
       ),
       r"\b[A-Za-z]{3,4}\.?\s+\d{1,2},?\s+\d{4}\b",
+      r"\b[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}\b",
   ]
   for pat in patterns:
     match = re.search(pat, text, re.IGNORECASE)
@@ -45,7 +46,7 @@ def extract_hna_date(text):
 
 
 def scrape_schedule():
-  print("Fetching complete HNA schedule...")
+  print("Fetching HNA schedule for Kraken Beers...")
   schedule_data = {"last_game": None, "upcoming_games": []}
   seen_games = set()
 
@@ -68,13 +69,16 @@ def scrape_schedule():
       raw_row_text = " ".join(cols).strip()
       row_upper = raw_row_text.upper()
 
-      # Capture date block headers (e.g., "Tuesday, Sep 29, 2026")
+      # Capture date headers (e.g., "Tuesday, Sep 29, 2026" or "Sep 29, 2026")
       found_date = extract_hna_date(raw_row_text)
-      if found_date:
+      if (
+          found_date
+          and "GAME #" not in row_upper
+          and "VISITOR" not in row_upper
+      ):
         current_date = found_date
-        continue
 
-      # Skip table headers, summary rows, and completed games showing final scores
+      # Skip table headers, summary rows, and completed games with scores
       if any(
           kw in row_upper
           for kw in ["FINAL", "RESULT", "GAME #", "RECORD:", "CANCELLED"]
@@ -84,60 +88,74 @@ def scrape_schedule():
       if re.search(r"\b\d+\s*-\s*\d+\b", raw_row_text):
         continue
 
-      # Filter strictly for Kraken Beers games
-      if "KRAKEN" in row_upper:
-        time_match = re.search(r"\b\d{1,2}:\d{2}\s*(?:AM|PM)\b", row_upper)
-        if not time_match:
-          continue
+      # Locate time cell/pattern
+      time_match = re.search(r"\b\d{1,2}:\d{2}\s*(?:AM|PM)\b", row_upper)
+      if not time_match:
+        continue
 
-        time_str = time_match.group(0)
+      time_str = time_match.group(0)
 
-        # Extract explicit Visitor (cols[2]) and Home (cols[3]) columns
-        visitor_raw = cols[2] if len(cols) > 2 else ""
-        home_raw = cols[3] if len(cols) > 3 else ""
+      # Extract teams and location based on column positions
+      visitor_raw = ""
+      home_raw = ""
 
-        # Location mapping from cell grid
-        location = "Local Rink"
-        for col in reversed(cols):
-          if any(
-              loc_kw in col.upper()
-              for loc_kw in ["RINK", "WSA", "PLAYLAND", "ICE", "MAP"]
-          ):
-            location = col.replace("MAP", "").strip()
-            break
-
-        away_clean = clean_team_name(visitor_raw)
-        home_clean = clean_team_name(home_raw)
-
-        # Safeguard: Ensure Kraken Beers is explicitly identified
-        if "KRAKEN" in visitor_raw.upper():
-          away_clean = "Kraken Beers"
-        elif "KRAKEN" in home_raw.upper():
-          home_clean = "Kraken Beers"
-
-        # Fallback if cleaning stripped too much text
-        if not home_clean:
-          home_clean = (
-              "Kraken Beers" if away_clean != "Kraken Beers" else "Opponent"
+      if len(cols) >= 4:
+        # Standard HNA row structure: [Game #, Time, Visitor, Home, Location]
+        visitor_raw = cols[2]
+        home_raw = cols[3]
+      else:
+        # Fallback regex split if columns merged
+        matchup_cols = [
+            c for c in cols if " VS " in c.upper() or " AT " in c.upper()
+        ]
+        if matchup_cols:
+          parts = re.split(
+              r"\s+(?:VS|AT)\s+", matchup_cols[0], flags=re.IGNORECASE
           )
-        if not away_clean:
-          away_clean = (
-              "Kraken Beers" if home_clean != "Kraken Beers" else "Opponent"
-          )
+          if len(parts) >= 2:
+            visitor_raw, home_raw = parts[0], parts[1]
 
-        game_obj = {
-            "date": current_date or "TBD",
-            "time": time_str,
-            "home_team": home_clean,
-            "away_team": away_clean,
-            "location": location,
-        }
+      # Clean team names
+      away_clean = clean_team_name(visitor_raw)
+      home_clean = clean_team_name(home_raw)
 
-        # Deduplicate identical games
-        game_signature = f"{game_obj['date']}_{game_obj['time']}_{game_obj['home_team']}_{game_obj['away_team']}"
-        if game_signature not in seen_games:
-          seen_games.add(game_signature)
-          schedule_data["upcoming_games"].append(game_obj)
+      # Map locations
+      location = "Local Rink"
+      for col in reversed(cols):
+        if any(
+            loc_kw in col.upper()
+            for loc_kw in ["RINK", "WSA", "PLAYLAND", "ICE", "MAP"]
+        ):
+          location = col.replace("MAP", "").strip()
+          break
+
+      # Ensure team defaults fall back cleanly
+      if "KRAKEN" in visitor_raw.upper():
+        away_clean = "Kraken Beers"
+      elif "KRAKEN" in home_raw.upper():
+        home_clean = "Kraken Beers"
+
+      if not home_clean or home_clean.upper() == "OPPONENT":
+        home_clean = (
+            "Kraken Beers" if away_clean != "Kraken Beers" else "Opponent"
+        )
+      if not away_clean or away_clean.upper() == "OPPONENT":
+        away_clean = (
+            "Kraken Beers" if home_clean != "Kraken Beers" else "Opponent"
+        )
+
+      game_obj = {
+          "date": current_date or "TBD",
+          "time": time_str,
+          "home_team": home_clean,
+          "away_team": away_clean,
+          "location": location,
+      }
+
+      game_signature = f"{game_obj['date']}_{game_obj['time']}_{game_obj['home_team']}_{game_obj['away_team']}"
+      if game_signature not in seen_games:
+        seen_games.add(game_signature)
+        schedule_data["upcoming_games"].append(game_obj)
 
   except Exception as e:
     print(f"Error fetching schedule: {e}")
