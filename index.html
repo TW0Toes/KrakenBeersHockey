@@ -363,7 +363,7 @@
         }
 
         // 2. Render Upcoming Games Section (3 distinct rows per game)
-        htmlContent += `<h3>Next</h3><div id="schedule-list">`;
+        htmlContent += `<h3>Upcoming Games</h3><div id="schedule-list">`;
 
         if (data.upcoming_games && data.upcoming_games.length > 0) {
           htmlContent += data.upcoming_games.map(game => `
