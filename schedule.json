@@ -1,12 +1,4 @@
 {
   "last_game": null,
-  "upcoming_games": [
-    {
-      "date": "Sep. 29, 2026",
-      "time": "10:20 PM",
-      "away_team": "Kraken Beers KRA",
-      "home_team": "Reapers REA",
-      "location": "WSA USA Rink"
-    }
-  ]
+  "upcoming_games": []
 }
