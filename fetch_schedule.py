@@ -56,6 +56,19 @@ def scrape_schedule():
 
     rows = soup.find_all("tr")
 
+    print("\n===== ROW DEBUG =====\n")
+
+for i, row in enumerate(rows):
+    cols = [
+        td.get_text(" ", strip=True)
+        for td in row.find_all(["td", "th"])
+    ]
+
+    if cols:
+        print(f"ROW {i}: {cols}")
+
+print("\n===== END DEBUG =====\n")
+
     print(f"Found {len(rows)} rows")
 
     seen = set()
