@@ -48,6 +48,19 @@ def scrape_schedule():
     res.raise_for_status()
     soup = BeautifulSoup(res.text, "html.parser")
 
+print("\n===== ALL TABLE ROWS =====\n")
+ 
+for row in soup.find_all("tr"):
+cols = [
+td.get_text(" ", strip=True)
+for td in row.find_all(["td", "th"])
+]
+ 
+if cols:
+print(cols)
+ 
+print("\n===== END ROWS =====\n")
+
     rows = soup.find_all("tr")
     current_date = ""
 
