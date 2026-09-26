@@ -1,4 +1,33 @@
 {
   "last_game": null,
-  "upcoming_games": []
+  "upcoming_games": [
+    {
+      "date": "Sep. 29, 2026",
+      "time": "10:05 PM",
+      "away_team": "Vipers VIP",
+      "home_team": "Kraken Beers KRA",
+      "location": "Playland"
+    },
+    {
+      "date": "Sep. 29, 2026",
+      "time": "10:35 PM",
+      "away_team": "Kraken Beers KRA",
+      "home_team": "Whiskey Rebellion WHI",
+      "location": "Playland"
+    },
+    {
+      "date": "Sep. 29, 2026",
+      "time": "9:05 PM",
+      "away_team": "Clusterpucks CLU",
+      "home_team": "Kraken Beers KRA",
+      "location": "Playland"
+    },
+    {
+      "date": "Sep. 29, 2026",
+      "time": "9:50 PM",
+      "away_team": "Night Owls OWLS",
+      "home_team": "Kraken Beers KRA",
+      "location": "WSA USA Rink"
+    }
+  ]
 }
