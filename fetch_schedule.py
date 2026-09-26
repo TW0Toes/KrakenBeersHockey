@@ -1,8 +1,15 @@
 
+import re
+from datetime import datetime
+from urllib.parse import urljoin
+
 import requests
 from bs4 import BeautifulSoup
-import re
 
+
+# ============================================================
+# CONFIGURATION
+# ============================================================
 
 BASE_URL = "https://www.hna.com/leagues/schedules.cfm"
 
@@ -11,8 +18,9 @@ PARAMS = {
     "leagueID": "5717",
     "schedType": "main",
     "printPage": "0",
+    "selectedTeamID": "683136",  # Kraken Beers
+    "monthID": "9,2026",          # September 2026
 }
-
 
 HEADERS = {
     "User-Agent": (
@@ -32,447 +40,435 @@ TEAM_NAME = "Kraken Beers"
 TEAM_ID = "683136"
 
 
-def clean_text(text):
-    """Collapse whitespace."""
-    return " ".join(text.split())
+# ============================================================
+# HTTP
+# ============================================================
 
-
-def print_limited(text, limit=12000):
-    """Print text without flooding GitHub Actions."""
-    text = str(text)
-
-    if len(text) > limit:
-        print(text[:limit])
-        print(f"\n... [truncated at {limit:,} characters]")
-    else:
-        print(text)
-
-
-def main():
-
-    print("=" * 70)
-    print("KRAKEN BEERS HOCKEY SCHEDULE DEBUG")
-    print("=" * 70)
-
-    # ------------------------------------------------------------
-    # 1. Fetch normal schedule page
-    # ------------------------------------------------------------
-
-    print("\nFetching HNA schedule...")
+def fetch_page():
+    """Download the HNA schedule page."""
 
     response = requests.get(
         BASE_URL,
         params=PARAMS,
         headers=HEADERS,
         timeout=30,
-        allow_redirects=True,
     )
-
-    print("Status:", response.status_code)
-    print("URL:", response.url)
-    print("Response length:", f"{len(response.text):,}")
 
     response.raise_for_status()
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    return response.text
 
 
-    # ------------------------------------------------------------
-    # 2. Basic page information
-    # ------------------------------------------------------------
+# ============================================================
+# HELPERS
+# ============================================================
 
-    print("\n" + "=" * 70)
-    print("PAGE INFO")
-    print("=" * 70)
+def clean_text(element):
+    """Return normalized text from a BeautifulSoup element."""
 
-    if soup.title:
-        print("Title:", soup.title.get_text(" ", strip=True))
+    if element is None:
+        return ""
 
-    # Selected season
-    season_select = soup.find(
-        "select",
-        {"name": "sel_ChildSeason"}
+    return " ".join(element.stripped_strings)
+
+
+def normalize_team_name(text):
+    """
+    Remove the division abbreviation that appears in the table.
+
+    Example:
+        'Kraken Beers KRA F' -> 'Kraken Beers'
+        'Reapers REA F'      -> 'Reapers'
+    """
+
+    text = clean_text(text)
+
+    # The desktop version has the team name, abbreviation and division.
+    # Example: Kraken Beers KRA F
+    #
+    # We primarily use the <a> text below, so this is a fallback.
+    parts = text.split()
+
+    if len(parts) >= 3:
+        # Last item is normally division (F, E1, E2, etc.)
+        # Second-to-last is normally abbreviation.
+        if re.fullmatch(r"[A-Z0-9]{1,5}", parts[-1]):
+            parts = parts[:-1]
+
+        if len(parts) >= 2 and re.fullmatch(r"[A-Z0-9]{2,5}", parts[-1]):
+            parts = parts[:-1]
+
+    return " ".join(parts)
+
+
+def get_team_name(cell):
+    """
+    Extract the full team name from a game table cell.
+
+    HNA provides the full name in:
+        <span class="d-sm-inline d-none">
+            <a>Kraken Beers</a>
+        </span>
+    """
+
+    if cell is None:
+        return ""
+
+    # First choice: the desktop/full team name.
+    desktop = cell.select_one("span.d-sm-inline.d-none a")
+
+    if desktop:
+        return clean_text(desktop)
+
+    # Second choice: tooltip title.
+    tooltip = cell.select_one("[title]")
+
+    if tooltip:
+        title = tooltip.get("title")
+
+        if title:
+            return " ".join(title.split())
+
+    # Last resort.
+    return normalize_team_name(cell)
+
+
+def get_team_id(cell):
+    """Extract the team ID from the team's stats link."""
+
+    if cell is None:
+        return None
+
+    link = cell.select_one('a[href*="stats_1team.cfm"]')
+
+    if not link:
+        return None
+
+    href = link.get("href", "")
+
+    match = re.search(r"[?&]teamID=(\d+)", href)
+
+    if match:
+        return match.group(1)
+
+    return None
+
+
+def parse_date_heading(text):
+    """
+    Convert HNA date headings such as:
+
+        Tue Sep 22, 2026
+
+    into:
+
+        09/22/2026
+    """
+
+    text = " ".join(text.split())
+
+    match = re.search(
+        r"(Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s+"
+        r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+"
+        r"(\d{1,2}),\s+(\d{4})",
+        text,
     )
 
-    if season_select:
-        selected = season_select.find("option", selected=True)
+    if not match:
+        return None
 
-        if selected:
-            print(
-                "Season:",
-                selected.get_text(" ", strip=True)
-            )
+    date_text = match.group(0)
 
-    # Selected month
-    month_select = soup.find(
-        "select",
-        {"name": "monthID"}
-    )
-
-    if month_select:
-        selected = month_select.find("option", selected=True)
-
-        if selected:
-            print(
-                "Month:",
-                selected.get_text(" ", strip=True),
-                "| value:",
-                selected.get("value")
-            )
+    try:
+        date_obj = datetime.strptime(date_text, "%a %b %d, %Y")
+        return date_obj.strftime("%m/%d/%Y")
+    except ValueError:
+        return None
 
 
-    # ------------------------------------------------------------
-    # 3. Verify Kraken Beers exists in team selector
-    # ------------------------------------------------------------
+def find_date_for_table(table):
+    """
+    Find the date heading associated with a schedule table.
 
-    print("\n" + "=" * 70)
-    print("KRAKEN TEAM ID")
-    print("=" * 70)
+    The HNA page places a date heading in an element before
+    the table rather than putting the date inside each <tr>.
+    """
 
-    team_option = soup.find(
-        "option",
-        string=lambda s: s and TEAM_NAME.lower() in s.lower()
-    )
+    # Walk backward through preceding elements.
 
-    if team_option:
-        print("Team:", team_option.get_text(" ", strip=True))
-        print("Team ID:", team_option.get("value"))
+    for element in table.find_all_previous(["h1", "h2", "h3", "h4", "h5", "div"], limit=30):
+        text = clean_text(element)
+
+        if not text:
+            continue
+
+        parsed = parse_date_heading(text)
+
+        if parsed:
+            return parsed
+
+    return None
+
+
+def get_game_rows(table):
+    """Return actual game rows, ignoring the table header."""
+
+    rows = []
+
+    for row in table.select("tbody tr"):
+        cells = row.find_all("td", recursive=False)
+
+        if len(cells) < 7:
+            continue
+
+        rows.append(row)
+
+    return rows
+
+
+# ============================================================
+# GAME PARSING
+# ============================================================
+
+def parse_game(row, date):
+    """Convert one HNA <tr> into a game dictionary."""
+
+    cells = row.find_all("td", recursive=False)
+
+    if len(cells) < 7:
+        return None
+
+    # HNA schedule columns:
+    #
+    # Upcoming:
+    #   0 = Time
+    #   1 = Game #
+    #   2 = Away
+    #   3 = Away score
+    #   4 = Home
+    #   5 = Home score
+    #   6 = Location
+    #
+    # Completed:
+    #   0 = Result
+    #   1 = Game #
+    #   2 = Away
+    #   3 = Away score
+    #   4 = Home
+    #   5 = Home score
+    #   6 = Location
+
+    first_cell = clean_text(cells[0])
+    game_number = clean_text(cells[1])
+
+    away_cell = cells[2]
+    away = get_team_name(away_cell)
+
+    home_cell = cells[4]
+    home = get_team_name(home_cell)
+
+    location = clean_text(cells[6])
+
+    away_score = clean_text(cells[3])
+    home_score = clean_text(cells[5])
+
+    # Determine whether this is an upcoming game or completed game.
+    if re.fullmatch(r"\d{1,2}:\d{2}\s+[AP]M", first_cell, re.IGNORECASE):
+        time = first_cell
+        status = "scheduled"
     else:
-        print("Could not find Kraken Beers in team selector.")
-
-
-    # ------------------------------------------------------------
-    # 4. Find the ACTUAL schedule row containing Kraken Beers
-    # ------------------------------------------------------------
-
-    print("\n" + "=" * 70)
-    print("KRAKEN BEERS GAME ROWS")
-    print("=" * 70)
-
-    kraken_rows = []
-
-    for row_number, row in enumerate(soup.find_all("tr")):
-
-        row_text = clean_text(
-            row.get_text(" ", strip=True)
-        )
-
-        if TEAM_NAME.lower() in row_text.lower():
-            kraken_rows.append((row_number, row))
-
-    print(
-        f"Found {len(kraken_rows)} table row(s) containing "
-        f"'{TEAM_NAME}'."
-    )
-
-
-    if not kraken_rows:
-        print("\nERROR: No Kraken Beers game rows found.")
-
-        print("\nSearching raw page text for Kraken Beers...")
-
-        if TEAM_NAME.lower() in response.text.lower():
-            print(
-                "Kraken Beers DOES exist in the HTML, "
-                "but not inside a <tr>."
-            )
-        else:
-            print("Kraken Beers was not found in the HTML at all.")
-
-        return
-
-
-    # ------------------------------------------------------------
-    # 5. Print each actual Kraken game row
-    # ------------------------------------------------------------
-
-    for index, (row_number, row) in enumerate(kraken_rows, start=1):
-
-        print("\n" + "-" * 70)
-        print(f"KRAKEN GAME #{index}")
-        print("TABLE ROW NUMBER:", row_number)
-        print("-" * 70)
-
-        cells = [
-            clean_text(cell.get_text(" ", strip=True))
-            for cell in row.find_all(["td", "th"])
-        ]
-
-        print("CELLS:")
-        print(cells)
-
-        print("\nRAW ROW HTML:")
-        print_limited(row.prettify(), 8000)
-
-
-        # --------------------------------------------------------
-        # 6. Inspect neighboring rows
-        # --------------------------------------------------------
-
-        print("\nNEIGHBORING ROWS:")
-
-        previous_rows = []
-        current = row
-
-        for _ in range(3):
-            current = current.find_previous("tr")
-
-            if current:
-                previous_rows.append(current)
-            else:
-                break
-
-        previous_rows.reverse()
-
-        for prev in previous_rows:
-            text = clean_text(
-                prev.get_text(" ", strip=True)
-            )
-
-            print("PREVIOUS:", repr(text))
-
-
-        next_rows = []
-
-        current = row
-
-        for _ in range(3):
-            current = current.find_next("tr")
-
-            if current:
-                next_rows.append(current)
-            else:
-                break
-
-        for nxt in next_rows:
-            text = clean_text(
-                nxt.get_text(" ", strip=True)
-            )
-
-            print("NEXT:", repr(text))
-
-
-        # --------------------------------------------------------
-        # 7. Inspect the parent table
-        # --------------------------------------------------------
-
-        table = row.find_parent("table")
-
-        if table:
-
-            print("\nPARENT TABLE SUMMARY:")
-
-            table_text = clean_text(
-                table.get_text(" ", strip=True)
-            )
-
-            print_limited(table_text, 5000)
-
-            print("\nPARENT TABLE HTML:")
-
-            print_limited(
-                table.prettify(),
-                20000
-            )
-
-
-        # --------------------------------------------------------
-        # 8. Inspect elements immediately preceding the table
-        # --------------------------------------------------------
-
-        if table:
-
-            print("\nELEMENTS BEFORE TABLE:")
-
-            element = table
-
-            for level in range(1, 6):
-
-                element = element.find_previous()
-
-                if not element:
-                    break
-
-                text = clean_text(
-                    element.get_text(" ", strip=True)
-                )
-
-                if text and len(text) < 300:
-
-                    print(
-                        f"LEVEL {level}: "
-                        f"<{element.name}> "
-                        f"{repr(text)}"
-                    )
-
-
-    # ------------------------------------------------------------
-    # 9. Search page for date-like strings
-    # ------------------------------------------------------------
-
-    print("\n" + "=" * 70)
-    print("DATE-LIKE TEXT FOUND IN PAGE")
-    print("=" * 70)
-
-    page_text = soup.get_text(" ", strip=True)
-
-    date_patterns = [
-        # 9/26/2026
-        r"\b\d{1,2}/\d{1,2}/\d{4}\b",
-
-        # 09-26-2026
-        r"\b\d{1,2}-\d{1,2}-\d{4}\b",
-
-        # September 26, 2026
-        r"\b(?:January|February|March|April|May|June|July|August|"
-        r"September|October|November|December)\s+"
-        r"\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b",
-
-        # Sat September 26
-        r"\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)"
-        r"\w*,?\s+"
-        r"(?:January|February|March|April|May|June|July|August|"
-        r"September|October|November|December)\s+\d{1,2}\b",
-    ]
-
-    dates_found = set()
-
-    for pattern in date_patterns:
-
-        matches = re.findall(
-            pattern,
-            page_text,
-            flags=re.IGNORECASE
-        )
-
-        for match in matches:
-            dates_found.add(match)
-
-    if dates_found:
-
-        for date in sorted(dates_found):
-            print(date)
+        time = None
+        status = first_cell.lower() if first_cell else "scheduled"
+
+    # Determine home/away relative to Kraken Beers.
+    if get_team_id(away_cell) == TEAM_ID:
+        opponent = home
+        home_away = "away"
+
+    elif get_team_id(home_cell) == TEAM_ID:
+        opponent = away
+        home_away = "home"
 
     else:
-        print(
-            "No conventional date strings found "
-            "in visible page text."
-        )
+        return None
 
-
-    # ------------------------------------------------------------
-    # 10. Look for likely date headings
-    # ------------------------------------------------------------
-
-    print("\n" + "=" * 70)
-    print("POSSIBLE DATE HEADINGS")
-    print("=" * 70)
-
-    heading_tags = soup.find_all(
-        ["h1", "h2", "h3", "h4", "h5", "h6"]
-    )
-
-    found_heading = False
-
-    for heading in heading_tags:
-
-        text = clean_text(
-            heading.get_text(" ", strip=True)
-        )
-
-        if text:
-            print(
-                f"<{heading.name}> {text}"
-            )
-
-            found_heading = True
-
-    if not found_heading:
-        print("No heading tags with text found.")
-
-
-    # ------------------------------------------------------------
-    # 11. Try HNA's Kraken team filter
-    # ------------------------------------------------------------
-
-    print("\n" + "=" * 70)
-    print("KRAKEN TEAM-FILTER TEST")
-    print("=" * 70)
-
-    filtered_params = {
-        "clientID": "2296",
-        "leagueID": "5717",
-        "schedType": "main",
-        "printPage": "0",
-        "selectedTeamID": TEAM_ID,
-        "monthID": "9,2026",
+    game = {
+        "date": date,
+        "time": time,
+        "away": away,
+        "home": home,
+        "opponent": opponent,
+        "home_away": home_away,
+        "location": location,
+        "game_number": game_number,
+        "status": status,
     }
 
-    filtered_response = requests.get(
-        BASE_URL,
-        params=filtered_params,
-        headers=HEADERS,
-        timeout=30,
-        allow_redirects=True,
-    )
+    # Add scores only when they actually exist.
+    if away_score or home_score:
+        game["away_score"] = away_score
+        game["home_score"] = home_score
 
-    print(
-        "Filtered status:",
-        filtered_response.status_code
-    )
+    return game
 
-    print(
-        "Filtered URL:",
-        filtered_response.url
-    )
 
-    print(
-        "Filtered response length:",
-        f"{len(filtered_response.text):,}"
-    )
+# ============================================================
+# SCHEDULE
+# ============================================================
 
-    filtered_response.raise_for_status()
+def scrape_schedule(html):
+    """Extract all Kraken Beers games from the page."""
 
-    filtered_soup = BeautifulSoup(
-        filtered_response.text,
-        "html.parser"
-    )
+    soup = BeautifulSoup(html, "html.parser")
 
-    filtered_rows = []
+    games = []
 
-    for row_number, row in enumerate(
-        filtered_soup.find_all("tr")
-    ):
+    # The schedule consists of multiple tables, one table per date.
+    for table in soup.select("table.table.table-hover"):
+        date = find_date_for_table(table)
 
-        text = clean_text(
-            row.get_text(" ", strip=True)
+        if not date:
+            continue
+
+        for row in get_game_rows(table):
+            game = parse_game(row, date)
+
+            if game:
+                games.append(game)
+
+    return games
+
+
+# ============================================================
+# NEXT GAME
+# ============================================================
+
+def find_next_game(games):
+    """
+    Find the first scheduled game.
+
+    Completed games have status such as 'final'.
+    Upcoming games have a time and status 'scheduled'.
+    """
+
+    scheduled = [
+        game
+        for game in games
+        if game.get("status") == "scheduled"
+    ]
+
+    if not scheduled:
+        return None
+
+    def sort_key(game):
+        date = datetime.strptime(game["date"], "%m/%d/%Y")
+
+        time = datetime.strptime(
+            game["time"],
+            "%I:%M %p",
         )
 
-        if TEAM_NAME.lower() in text.lower():
-            filtered_rows.append(
-                (row_number, text)
-            )
+        return datetime.combine(date.date(), time.time())
 
-    print(
-        f"Kraken rows returned by team filter: "
-        f"{len(filtered_rows)}"
-    )
+    scheduled.sort(key=sort_key)
 
-    for row_number, text in filtered_rows:
-        print(
-            f"ROW {row_number}: {text}"
-        )
+    return scheduled[0]
 
 
-    # ------------------------------------------------------------
-    # DONE
-    # ------------------------------------------------------------
+# ============================================================
+# OUTPUT
+# ============================================================
 
-    print("\n" + "=" * 70)
-    print("DEBUG COMPLETE")
+def print_schedule(games):
+    """Print a human-readable schedule."""
+
+    print()
     print("=" * 70)
+    print("KRAKEN BEERS SCHEDULE")
+    print("=" * 70)
+
+    if not games:
+        print("No Kraken Beers games found.")
+        return
+
+    for game in games:
+        print()
+
+        print(
+            f"{game['date']} | "
+            f"{game['time'] or 'Final'}"
+        )
+
+        print(
+            f"  {game['away']} "
+            f"{game.get('away_score', '')}"
+            f"  @  "
+            f"{game['home']} "
+            f"{game.get('home_score', '')}"
+        )
+
+        print(f"  Location: {game['location']}")
+        print(f"  Game #:   {game['game_number']}")
+        print(f"  Status:   {game['status']}")
+        print(f"  Opponent: {game['opponent']}")
+        print(f"  Home/Away: {game['home_away']}")
+
+
+def print_next_game(games):
+    """Print the next scheduled Kraken Beers game."""
+
+    next_game = find_next_game(games)
+
+    print()
+    print("=" * 70)
+    print("NEXT KRAKEN BEERS GAME")
+    print("=" * 70)
+
+    if not next_game:
+        print("No upcoming Kraken Beers games found.")
+        return
+
+    print(
+        f"{next_game['date']} at {next_game['time']}"
+    )
+
+    print(
+        f"Kraken Beers {'@' if next_game['home_away'] == 'away' else 'vs'} "
+        f"{next_game['opponent']}"
+    )
+
+    print(f"Location: {next_game['location']}")
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
+def main():
+    print("=" * 70)
+    print("KRAKEN BEERS HOCKEY SCHEDULE SCRAPER")
+    print("=" * 70)
+
+    try:
+        html = fetch_page()
+
+    except requests.RequestException as exc:
+        print()
+        print("ERROR: Could not download the HNA schedule.")
+        print(exc)
+        return
+
+    print()
+    print(f"Downloaded {len(html):,} bytes.")
+
+    games = scrape_schedule(html)
+
+    print()
+    print(f"Found {len(games)} Kraken Beers game(s).")
+
+    print_schedule(games)
+    print_next_game(games)
 
 
 if __name__ == "__main__":
     main()
-
