@@ -2,53 +2,39 @@
   "last_game": null,
   "upcoming_games": [
     {
-      "date": "TBD",
-      "time": "",
-      "home_team": "Kraken",
-      "away_team": "Opponent",
-      "location": "Local Rink"
-    },
-    {
-      "date": "Sep. 29, 2026",
-      "time": "",
-      "home_team": "Kraken",
-      "away_team": "Opponent",
-      "location": ""
-    },
-    {
       "date": "Sep. 29, 2026",
       "time": "10:20 PM",
-      "home_team": "Kraken",
-      "away_team": "Opponent",
-      "location": "RS"
+      "home_team": "Kraken Beers",
+      "away_team": "Kraken",
+      "location": "Reapers REA F"
     },
     {
       "date": "Sep. 29, 2026",
       "time": "10:05 PM",
-      "home_team": "Kraken",
-      "away_team": "Opponent",
-      "location": "RS"
+      "home_team": "Kraken Beers",
+      "away_team": "Vipers F",
+      "location": "Kraken Beers KRA F"
     },
     {
       "date": "Sep. 29, 2026",
       "time": "10:35 PM",
-      "home_team": "Kraken",
-      "away_team": "Opponent",
-      "location": "RS"
+      "home_team": "Kraken Beers",
+      "away_team": "Kraken",
+      "location": "Whiskey Rebellion WHI F"
     },
     {
       "date": "Sep. 29, 2026",
       "time": "9:05 PM",
-      "home_team": "Kraken",
-      "away_team": "Opponent",
-      "location": "RS"
+      "home_team": "Kraken Beers",
+      "away_team": "Clusterpucks",
+      "location": "Kraken Beers KRA F"
     },
     {
       "date": "Sep. 29, 2026",
       "time": "9:50 PM",
-      "home_team": "Kraken",
-      "away_team": "Opponent",
-      "location": "RS"
+      "home_team": "Kraken Beers",
+      "away_team": "Night",
+      "location": "Kraken Beers KRA F"
     }
   ]
 }
