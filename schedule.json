@@ -1,4 +1,12 @@
 {
   "last_game": null,
-  "upcoming_games": []
+  "upcoming_games": [
+    {
+      "date": "Sep. 29, 2026",
+      "time": "10:20 PM",
+      "home_team": "",
+      "away_team": "Kraken Beers KRA",
+      "location": "Reapers REA F"
+    }
+  ]
 }
