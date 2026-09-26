@@ -1,11 +1,54 @@
 {
+  "last_game": null,
   "upcoming_games": [
+    {
+      "date": "TBD",
+      "time": "",
+      "home_team": "Kraken",
+      "away_team": "Opponent",
+      "location": "Local Rink"
+    },
+    {
+      "date": "Sep. 29, 2026",
+      "time": "",
+      "home_team": "Kraken",
+      "away_team": "Opponent",
+      "location": ""
+    },
     {
       "date": "Sep. 29, 2026",
       "time": "10:20 PM",
-      "home_team": "Reapers",
-      "away_team": "Kraken",
-      "location": "WSA USA Rink"
+      "home_team": "Kraken",
+      "away_team": "Opponent",
+      "location": "RS"
+    },
+    {
+      "date": "Sep. 29, 2026",
+      "time": "10:05 PM",
+      "home_team": "Kraken",
+      "away_team": "Opponent",
+      "location": "RS"
+    },
+    {
+      "date": "Sep. 29, 2026",
+      "time": "10:35 PM",
+      "home_team": "Kraken",
+      "away_team": "Opponent",
+      "location": "RS"
+    },
+    {
+      "date": "Sep. 29, 2026",
+      "time": "9:05 PM",
+      "home_team": "Kraken",
+      "away_team": "Opponent",
+      "location": "RS"
+    },
+    {
+      "date": "Sep. 29, 2026",
+      "time": "9:50 PM",
+      "home_team": "Kraken",
+      "away_team": "Opponent",
+      "location": "RS"
     }
   ]
 }
