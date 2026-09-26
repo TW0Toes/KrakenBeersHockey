@@ -3,7 +3,7 @@ import re
 import requests
 from bs4 import BeautifulSoup
 
-SCHEDULE_URL = (
+URL = (
     "https://www.hna.com/leagues/schedules.cfm"
     "?clientID=2296&leagueID=5717&teamID=683136&printPage=0"
 )
@@ -18,84 +18,87 @@ HEADERS = {
 
 
 def clean_team_name(name):
-    if not name:
-        return ""
-
-    name = re.sub(r"\bF\b", "", name, flags=re.IGNORECASE)
-    name = re.sub(r"\s+", " ", name)
-
-    return name.strip()
-
-
-def extract_next_game_date(text):
-    match = re.search(
-        r"Next:\s*([A-Za-z]{3,4}\.\s*\d{1,2},\s*\d{4})",
-        text
-    )
-
-    if match:
-        return match.group(1).strip()
-
-    return ""
+    name = re.sub(r"\bF\b", "", name)
+    return re.sub(r"\s+", " ", name).strip()
 
 
 def scrape_schedule():
-    print("Fetching schedule...")
-
-    schedule_data = {
+    schedule = {
         "last_game": None,
         "upcoming_games": []
     }
 
-    try:
-        response = requests.get(
-            SCHEDULE_URL,
-            headers=HEADERS,
-            timeout=30
-        )
+    response = requests.get(URL, headers=HEADERS, timeout=30)
 
-        print(f"Status Code: {response.status_code}")
-        print(f"Final URL: {response.url}")
-        print(f"HTML Length: {len(response.text)}")
+    print("Status:", response.status_code)
+    print("Length:", len(response.text))
+    print()
+    print(response.text[:5000])
 
-        response.raise_for_status()
+    response.raise_for_status()
 
-        # Save raw HTML for inspection
-        with open("hna_debug.html", "w", encoding="utf-8") as f:
-            f.write(response.text)
+    soup = BeautifulSoup(response.text, "html.parser")
 
-        print("Saved hna_debug.html")
+    rows = soup.find_all("tr")
 
-        print("\n===== FIRST 5000 CHARACTERS =====\n")
-        print(response.text[:5000])
-        print("\n===== END HTML =====\n")
+    print(f"Found {len(rows)} rows")
 
-        soup = BeautifulSoup(response.text, "html.parser")
+    game_date = ""
 
-        rows = soup.find_all("tr")
+    for row in rows:
+        text = row.get_text(" ", strip=True)
 
-        print(f"Found {len(rows)} table rows")
+        if "Next:" in text:
+            match = re.search(
+                r"Next:\s*([A-Za-z]{3,4}\.\s*\d{1,2},\s*\d{4})",
+                text
+            )
 
-        print("\n===== TABLE ROWS =====\n")
+            if match:
+                game_date = match.group(1)
 
-        for i, row in enumerate(rows):
-            cols = [
-                td.get_text(" ", strip=True)
-                for td in row.find_all(["td", "th"])
-            ]
+        cols = [
+            td.get_text(" ", strip=True)
+            for td in row.find_all(["td", "th"])
+        ]
 
-            if cols:
-                print(f"ROW {i}: {cols}")
+        if cols:
+            print(cols)
 
-        print("\n===== END TABLE ROWS =====\n")
+    for row in rows:
+        cols = [
+            td.get_text(" ", strip=True)
+            for td in row.find_all(["td", "th"])
+        ]
 
-        game_date = ""
+        if len(cols) < 7:
+            continue
 
-        # Find "Next: Sep. 29, 2026..."
-        for row in rows:
-            text = row.get_text(" ", strip=True)
+        if cols[0].upper() in ("TIME", "RESULT"):
+            continue
 
-            if "Next:" in text:
-                game_date = extract_next_game_date(text)
-                print(f"Game Date Found: {game_date}")
-                break
+        if not re.match(
+            r"^\d{1,2}:\d{2}\s*(AM|PM)$",
+            cols[0],
+            re.IGNORECASE
+        ):
+            continue
+
+        game = {
+            "date": game_date,
+            "time": cols[0],
+            "away_team": clean_team_name(cols[2]),
+            "home_team": clean_team_name(cols[4]),
+            "location": cols[6]
+        }
+
+        schedule["upcoming_games"].append(game)
+
+    with open("schedule.json", "w") as f:
+        json.dump(schedule, f, indent=2)
+
+    print("Saved schedule.json")
+
+
+if __name__ == "__main__":
+    scrape_schedule()
