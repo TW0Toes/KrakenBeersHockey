@@ -1,5 +1,4 @@
 import json
-import datetime
 import re
 import requests
 from bs4 import BeautifulSoup
@@ -11,146 +10,111 @@ HEADERS = {
     )
 }
 
-CLIENT_ID = "2296"
-LEAGUE_ID = "5717"
-TEAM_ID = "683136"
+# The proven single-team endpoint that doesn't trigger ColdFusion 500 blocks
+BASE_TEAM_URL = "https://www.hna.com/leagues/schedules.cfm?clientID=2296&leagueID=25148&teamID=679527&printPage=0"
 
-# Current season months
-YEARS = [2026, 2027]
-MONTHS = [9, 10, 11, 12, 1, 2, 3, 4]  # Sep through Apr
-
+# Season months to check
+SEASON_MONTHS = [
+    (9, 2026), (10, 2026), (11, 2026), (12, 2026),
+    (1, 2027), (2, 2027), (3, 2027), (4, 2027)
+]
 
 def clean_team_name(name):
-  if not name:
-    return ""
-  # Strip division codes like "KRA F", "WHI F", "REA F" from team names
-  cleaned = re.sub(
-      r"\b[A-Z]{2,5}\s+[A-Z0-9]\b$", "", name.strip(), flags=re.IGNORECASE
-  )
-  cleaned = re.sub(
-      r"\b[A-Z]{3,5}\b$", "", cleaned.strip(), flags=re.IGNORECASE
-  )
-  cleaned = re.sub(
-      r"^\d+\s*(vs\.?|at|@)?\s*", "", cleaned, flags=re.IGNORECASE
-  )
-  return re.sub(r"\s+", " ", cleaned).strip()
-
+    if not name:
+        return ""
+    cleaned = re.sub(r'\b[A-Z]{2,5}\s+[A-Z0-9]\b$', '', name.strip(), flags=re.IGNORECASE)
+    cleaned = re.sub(r'\b[A-Z]{3,5}\b$', '', cleaned.strip(), flags=re.IGNORECASE)
+    cleaned = re.sub(r'^\d+\s*(vs\.?|at|@)?\s*', '', cleaned, flags=re.IGNORECASE)
+    return re.sub(r'\s+', ' ', cleaned).strip()
 
 def extract_hna_date(text):
-  patterns = [
-      (
-          r"\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+[A-Za-z]{3,4}\.?\s+\d{1,2}(?:,?\s*\d{4})?\b"
-      ),
-      r"\b[A-Za-z]{3,4}\.?\s+\d{1,2},?\s+\d{4}\b",
-  ]
-  for pat in patterns:
-    match = re.search(pat, text, re.IGNORECASE)
-    if match:
-      return match.group(0).strip()
-  return ""
-
+    patterns = [
+        r'\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+[A-Za-z]{3,4}\.?\s+\d{1,2}(?:,?\s*\d{4})?\b',
+        r'\b[A-Za-z]{3,4}\.?\s+\d{1,2},?\s+\d{4}\b'
+    ]
+    for pat in patterns:
+        match = re.search(pat, text, re.IGNORECASE)
+        if match:
+            return match.group(0).strip()
+    return ""
 
 def scrape_schedule():
-  print("Fetching monthly schedules...")
-  schedule_data = {"last_game": None, "upcoming_games": []}
-  seen_games = set()
+    print("Fetching full season schedule...")
+    schedule_data = {"last_game": None, "upcoming_games": []}
+    seen_games = set()
 
-  for year in YEARS:
-    for month in MONTHS:
-      url = f"https://www.hna.com/leagues/schedules.cfm?clientID={CLIENT_ID}&leagueID={LEAGUE_ID}&schedType=main&printPage=0&monthID={month}&yearID={year}&selectedTeamID={TEAM_ID}&selectedOfficialID=0&gameType="
+    for month, year in SEASON_MONTHS:
+        url = f"{BASE_TEAM_URL}&monthID={month}&yearID={year}"
 
-      try:
-        res = requests.get(url, headers=HEADERS, timeout=10)
-        if res.status_code != 200:
-          continue
+        try:
+            res = requests.get(url, headers=HEADERS, timeout=12)
+            if res.status_code != 200:
+                continue
 
-        soup = BeautifulSoup(res.text, "html.parser")
-        rows = soup.find_all("tr")
-        current_date = ""
+            soup = BeautifulSoup(res.text, 'html.parser')
+            rows = soup.find_all('tr')
+            current_date = ""
 
-        for row in rows:
-          cols = [
-              re.sub(r"\s+", " ", td.text).strip()
-              for td in row.find_all(["td", "th"])
-          ]
-          if not cols:
-            continue
+            for row in rows:
+                cols = [re.sub(r'\s+', ' ', td.text).strip() for td in row.find_all(['td', 'th'])]
+                if not cols:
+                    continue
 
-          raw_row_text = " ".join(cols).strip()
-          row_upper = raw_row_text.upper()
+                raw_row_text = ' '.join(cols).strip()
+                row_upper = raw_row_text.upper()
 
-          # Check for date block headers (e.g. "Wednesday, Oct 14, 2026")
-          found_date = extract_hna_date(raw_row_text)
-          if found_date:
-            current_date = found_date
-            continue
+                found_date = extract_hna_date(raw_row_text)
+                if found_date:
+                    current_date = found_date
 
-          # Skip table header/footer noise
-          if any(
-              kw in row_upper
-              for kw in [
-                  "GAME #",
-                  "VISITOR",
-                  "HOME",
-                  "RECORD:",
-                  "LAST:",
-                  "CANCELLED",
-                  "POSTPONED",
-              ]
-          ):
-            continue
+                # Ignore table headers and score/summary rows
+                if any(kw in row_upper for kw in ['RESULT', 'GAME #', 'VISITOR', 'FINAL', 'RECORD:', 'LAST:']):
+                    continue
 
-          # Ignore completed games with scores (e.g., '4 - 2')
-          if re.search(r"\b\d+\s*-\s*\d+\b", raw_row_text) or "FINAL" in row_upper:
-            continue
+                # Filter completed/past games that have numerical scores (e.g., '4 - 2')
+                if re.search(r'\b\d+\s*-\s*\d+\b', raw_row_text):
+                    continue
 
-          # Only process rows where Kraken is playing
-          if "KRAKEN" not in row_upper:
-            continue
+                if "KRAKEN" in row_upper or " VS " in row_upper or " AT " in row_upper:
+                    time_str = next((c for c in cols if 'PM' in c.upper() or 'AM' in c.upper()), "")
+                    
+                    # Ignore completed games or empty rows without time
+                    if not time_str:
+                        continue
 
-          # Ensure we have enough table columns to map visitor, home, location
-          if len(cols) >= 5:
-            # Monthly schedule table cell structure:
-            # cols[1] = Time, cols[2] = Visitor, cols[3] = Home, cols[4] = Location
-            time_str = cols[1] if ("AM" in cols[1].upper() or "PM" in cols[1].upper()) else ""
-            visitor_raw = cols[2]
-            home_raw = cols[3]
-            location_raw = cols[4]
+                    teams = [c for c in cols if " VS " in c.upper() or " AT " in c.upper()]
+                    matchup = teams[0] if teams else "Kraken Beers vs Opponent"
+                    location = cols[-1] if len(cols) > 3 else "Local Rink"
 
-            # If time wasn't in cell 1, try regex search across row
-            if not time_str:
-              time_match = re.search(r"\b\d{1,2}:\d{2}\s*(?:AM|PM)\b", row_upper)
-              time_str = time_match.group(0) if time_match else ""
+                    if " VS " in matchup.upper():
+                        parts = re.split(r'\s+VS\s+', matchup, flags=re.IGNORECASE)
+                        home, away = parts[0], parts[1]
+                    elif " AT " in matchup.upper():
+                        parts = re.split(r'\s+AT\s+', matchup, flags=re.IGNORECASE)
+                        away, home = parts[0], parts[1]
+                    else:
+                        home, away = "Kraken Beers", "Opponent"
 
-            away_team = clean_team_name(visitor_raw)
-            home_team = clean_team_name(home_raw)
+                    game_obj = {
+                        "date": current_date or "TBD",
+                        "time": time_str,
+                        "home_team": clean_team_name(home),
+                        "away_team": clean_team_name(away),
+                        "location": location
+                    }
 
-            # Skip if parsing failed to extract valid team names
-            if not away_team or not home_team:
-              continue
+                    game_signature = f"{game_obj['date']}_{game_obj['time']}_{game_obj['home_team']}"
+                    if game_signature not in seen_games:
+                        seen_games.add(game_signature)
+                        schedule_data["upcoming_games"].append(game_obj)
 
-            game_obj = {
-                "date": current_date or "TBD",
-                "time": time_str,
-                "home_team": home_team,
-                "away_team": away_team,
-                "location": location_raw or "Local Rink",
-            }
+        except Exception as e:
+            print(f"Skipping {month}/{year}: {e}")
 
-            # Deduplicate across month fetches
-            game_signature = f"{game_obj['date']}_{game_obj['time']}_{game_obj['home_team']}_{game_obj['away_team']}"
-            if game_signature not in seen_games:
-              seen_games.add(game_signature)
-              schedule_data["upcoming_games"].append(game_obj)
+    with open('schedule.json', 'w') as f:
+        json.dump(schedule_data, f, indent=2)
 
-      except Exception as e:
-        print(f"Skipping month {month}/{year}: {e}")
+    print(f"Schedule complete! Saved {len(schedule_data['upcoming_games'])} upcoming games.")
 
-  with open("schedule.json", "w") as f:
-    json.dump(schedule_data, f, indent=2)
-
-  print(f"Schedule complete! Saved {len(schedule_data['upcoming_games'])} games.")
-
-
-if __name__ == "__main__":
-  scrape_schedule()
+if __name__ == '__main__':
+    scrape_schedule()
