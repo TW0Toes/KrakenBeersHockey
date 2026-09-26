@@ -2,11 +2,249 @@
   "last_game": null,
   "upcoming_games": [
     {
-      "date": "Sep. 29, 2026",
+      "date": "9/2026",
       "time": "10:20 PM",
-      "home_team": "Kraken Beers",
-      "away_team": "Kraken",
-      "location": "Reapers REA F"
+      "home_team": "",
+      "away_team": "Kraken Beers",
+      "location": "WSA USA Rink"
+    },
+    {
+      "date": "10/2026",
+      "time": "10:05 PM",
+      "home_team": "",
+      "away_team": "Vipers F",
+      "location": "Playland"
+    },
+    {
+      "date": "10/2026",
+      "time": "10:35 PM",
+      "home_team": "",
+      "away_team": "Kraken Beers",
+      "location": "Playland"
+    },
+    {
+      "date": "10/2026",
+      "time": "9:05 PM",
+      "home_team": "",
+      "away_team": "Clusterpucks",
+      "location": "Playland"
+    },
+    {
+      "date": "10/2026",
+      "time": "9:50 PM",
+      "home_team": "",
+      "away_team": "Night Owls",
+      "location": "WSA USA Rink"
+    },
+    {
+      "date": "11/2026",
+      "time": "10:20 PM",
+      "home_team": "",
+      "away_team": "Kraken Beers",
+      "location": "WSA USA Rink"
+    },
+    {
+      "date": "11/2026",
+      "time": "10:05 PM",
+      "home_team": "",
+      "away_team": "Vipers F",
+      "location": "Playland"
+    },
+    {
+      "date": "11/2026",
+      "time": "10:35 PM",
+      "home_team": "",
+      "away_team": "Kraken Beers",
+      "location": "Playland"
+    },
+    {
+      "date": "11/2026",
+      "time": "9:05 PM",
+      "home_team": "",
+      "away_team": "Clusterpucks",
+      "location": "Playland"
+    },
+    {
+      "date": "11/2026",
+      "time": "9:50 PM",
+      "home_team": "",
+      "away_team": "Night Owls",
+      "location": "WSA USA Rink"
+    },
+    {
+      "date": "12/2026",
+      "time": "10:20 PM",
+      "home_team": "",
+      "away_team": "Kraken Beers",
+      "location": "WSA USA Rink"
+    },
+    {
+      "date": "12/2026",
+      "time": "10:05 PM",
+      "home_team": "",
+      "away_team": "Vipers F",
+      "location": "Playland"
+    },
+    {
+      "date": "12/2026",
+      "time": "10:35 PM",
+      "home_team": "",
+      "away_team": "Kraken Beers",
+      "location": "Playland"
+    },
+    {
+      "date": "12/2026",
+      "time": "9:05 PM",
+      "home_team": "",
+      "away_team": "Clusterpucks",
+      "location": "Playland"
+    },
+    {
+      "date": "12/2026",
+      "time": "9:50 PM",
+      "home_team": "",
+      "away_team": "Night Owls",
+      "location": "WSA USA Rink"
+    },
+    {
+      "date": "1/2026",
+      "time": "10:20 PM",
+      "home_team": "",
+      "away_team": "Kraken Beers",
+      "location": "WSA USA Rink"
+    },
+    {
+      "date": "1/2026",
+      "time": "10:05 PM",
+      "home_team": "",
+      "away_team": "Vipers F",
+      "location": "Playland"
+    },
+    {
+      "date": "1/2026",
+      "time": "10:35 PM",
+      "home_team": "",
+      "away_team": "Kraken Beers",
+      "location": "Playland"
+    },
+    {
+      "date": "1/2026",
+      "time": "9:05 PM",
+      "home_team": "",
+      "away_team": "Clusterpucks",
+      "location": "Playland"
+    },
+    {
+      "date": "1/2026",
+      "time": "9:50 PM",
+      "home_team": "",
+      "away_team": "Night Owls",
+      "location": "WSA USA Rink"
+    },
+    {
+      "date": "2/2026",
+      "time": "10:20 PM",
+      "home_team": "",
+      "away_team": "Kraken Beers",
+      "location": "WSA USA Rink"
+    },
+    {
+      "date": "2/2026",
+      "time": "10:05 PM",
+      "home_team": "",
+      "away_team": "Vipers F",
+      "location": "Playland"
+    },
+    {
+      "date": "2/2026",
+      "time": "10:35 PM",
+      "home_team": "",
+      "away_team": "Kraken Beers",
+      "location": "Playland"
+    },
+    {
+      "date": "2/2026",
+      "time": "9:05 PM",
+      "home_team": "",
+      "away_team": "Clusterpucks",
+      "location": "Playland"
+    },
+    {
+      "date": "2/2026",
+      "time": "9:50 PM",
+      "home_team": "",
+      "away_team": "Night Owls",
+      "location": "WSA USA Rink"
+    },
+    {
+      "date": "3/2026",
+      "time": "10:20 PM",
+      "home_team": "",
+      "away_team": "Kraken Beers",
+      "location": "WSA USA Rink"
+    },
+    {
+      "date": "3/2026",
+      "time": "10:05 PM",
+      "home_team": "",
+      "away_team": "Vipers F",
+      "location": "Playland"
+    },
+    {
+      "date": "3/2026",
+      "time": "10:35 PM",
+      "home_team": "",
+      "away_team": "Kraken Beers",
+      "location": "Playland"
+    },
+    {
+      "date": "3/2026",
+      "time": "9:05 PM",
+      "home_team": "",
+      "away_team": "Clusterpucks",
+      "location": "Playland"
+    },
+    {
+      "date": "3/2026",
+      "time": "9:50 PM",
+      "home_team": "",
+      "away_team": "Night Owls",
+      "location": "WSA USA Rink"
+    },
+    {
+      "date": "4/2026",
+      "time": "10:20 PM",
+      "home_team": "",
+      "away_team": "Kraken Beers",
+      "location": "WSA USA Rink"
+    },
+    {
+      "date": "4/2026",
+      "time": "10:05 PM",
+      "home_team": "",
+      "away_team": "Vipers F",
+      "location": "Playland"
+    },
+    {
+      "date": "4/2026",
+      "time": "10:35 PM",
+      "home_team": "",
+      "away_team": "Kraken Beers",
+      "location": "Playland"
+    },
+    {
+      "date": "4/2026",
+      "time": "9:05 PM",
+      "home_team": "",
+      "away_team": "Clusterpucks",
+      "location": "Playland"
+    },
+    {
+      "date": "4/2026",
+      "time": "9:50 PM",
+      "home_team": "",
+      "away_team": "Night Owls",
+      "location": "WSA USA Rink"
     }
   ]
 }
