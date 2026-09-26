@@ -28,11 +28,6 @@ def clean_team_name(name):
 
 
 def extract_next_game_date(text):
-    """
-    Extract:
-    Next: Sep. 29, 2026 at 10:20 PM
-    """
-
     match = re.search(
         r"Next:\s*([A-Za-z]{3,4}\.\s*\d{1,2},\s*\d{4})",
         text
@@ -59,88 +54,48 @@ def scrape_schedule():
             timeout=30
         )
 
+        print(f"Status Code: {response.status_code}")
+        print(f"Final URL: {response.url}")
+        print(f"HTML Length: {len(response.text)}")
+
         response.raise_for_status()
 
-        soup = BeautifulSoup(
-            response.text,
-            "html.parser"
-        )
+        # Save raw HTML for inspection
+        with open("hna_debug.html", "w", encoding="utf-8") as f:
+            f.write(response.text)
+
+        print("Saved hna_debug.html")
+
+        print("\n===== FIRST 5000 CHARACTERS =====\n")
+        print(response.text[:5000])
+        print("\n===== END HTML =====\n")
+
+        soup = BeautifulSoup(response.text, "html.parser")
 
         rows = soup.find_all("tr")
 
+        print(f"Found {len(rows)} table rows")
+
+        print("\n===== TABLE ROWS =====\n")
+
+        for i, row in enumerate(rows):
+            cols = [
+                td.get_text(" ", strip=True)
+                for td in row.find_all(["td", "th"])
+            ]
+
+            if cols:
+                print(f"ROW {i}: {cols}")
+
+        print("\n===== END TABLE ROWS =====\n")
+
         game_date = ""
 
-        #
-        # Get date from summary row
-        #
+        # Find "Next: Sep. 29, 2026..."
         for row in rows:
             text = row.get_text(" ", strip=True)
 
             if "Next:" in text:
                 game_date = extract_next_game_date(text)
+                print(f"Game Date Found: {game_date}")
                 break
-
-        seen = set()
-
-        for row in rows:
-
-            cols = [
-                re.sub(r"\s+", " ", td.get_text(" ", strip=True)).strip()
-                for td in row.find_all(["td", "th"])
-            ]
-
-            if len(cols) < 7:
-                continue
-
-            #
-            # Skip headers
-            #
-            if cols[0].strip().upper() in ("TIME", "RESULT"):
-                continue
-
-            #
-            # Find rows beginning with a time
-            #
-            if not re.match(
-                r"^\d{1,2}:\d{2}\s*(AM|PM)$",
-                cols[0],
-                re.IGNORECASE
-            ):
-                continue
-
-            game = {
-                "date": game_date,
-                "time": cols[0],
-                "away_team": clean_team_name(cols[2]),
-                "home_team": clean_team_name(cols[4]),
-                "location": cols[6]
-            }
-
-            signature = (
-                f"{game['date']}|"
-                f"{game['time']}|"
-                f"{game['away_team']}|"
-                f"{game['home_team']}"
-            )
-
-            if signature not in seen:
-                seen.add(signature)
-                schedule_data["upcoming_games"].append(game)
-
-        with open("schedule.json", "w") as f:
-            json.dump(
-                schedule_data,
-                f,
-                indent=2
-           )
-
-        print(
-            f"Saved {len(schedule_data['upcoming_games'])} games"
-        )
-
-    except Exception as e:
-        print(f"Error: {e}")
-
-
-if __name__ == "__main__":
-    scrape_schedule()
