@@ -1,3 +1,4 @@
+```python
 import requests
 from bs4 import BeautifulSoup
 
@@ -9,7 +10,6 @@ URL = (
     "&schedType=main"
     "&printPage=0"
 )
-
 
 HEADERS = {
     "User-Agent": (
@@ -26,50 +26,45 @@ HEADERS = {
 
 
 def main():
-    print("Downloading schedule...")
+    print("Fetching HNA schedule...")
 
     response = requests.get(
         URL,
         headers=HEADERS,
         timeout=30,
-        allow_redirects=True
+        allow_redirects=True,
     )
 
-    print("STATUS:", response.status_code)
-    print("URL:", response.url)
-    print("LENGTH:", len(response.text))
+    print(f"Status: {response.status_code}")
+    print(f"Final URL: {response.url}")
+    print(f"Response length: {len(response.text):,} characters")
 
     response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
 
 
-    # ============================================================
-    # 1. BASIC PAGE INFORMATION
-    # ============================================================
+    # ------------------------------------------------------------
+    # 1. Basic page information
+    # ------------------------------------------------------------
 
-    print("\n" + "=" * 80)
-    print("PAGE TITLE")
-    print("=" * 80)
+    print("\n=== PAGE INFO ===")
 
     if soup.title:
-        print(soup.title.get_text(" ", strip=True))
+        print("Title:", soup.title.get_text(" ", strip=True))
     else:
-        print("No <title> found.")
+        print("Title: <none>")
 
 
-    # ============================================================
-    # 2. LOOK FOR DATE-RELATED ELEMENTS
-    # ============================================================
+    # ------------------------------------------------------------
+    # 2. Look for obvious date elements
+    # ------------------------------------------------------------
 
-    print("\n" + "=" * 80)
-    print("POSSIBLE DATE ELEMENTS")
-    print("=" * 80)
+    print("\n=== DATE-RELATED ELEMENTS ===")
 
-    found_date_elements = False
+    date_elements = []
 
     for element in soup.find_all(True):
-
         element_id = str(element.get("id", "")).lower()
 
         classes = element.get("class", [])
@@ -77,230 +72,153 @@ def main():
 
         name = str(element.get("name", "")).lower()
 
-        combined = f"{element_id} {class_text} {name}"
+        if (
+            "date" in element_id
+            or "date" in class_text
+            or "date" in name
+        ):
+            text = element.get_text(" ", strip=True)
 
-        if "date" in combined:
-            found_date_elements = True
+            # Ignore huge containers.
+            if text and len(text) < 500:
+                date_elements.append(element)
 
-            print("\nTAG:", element.name)
-            print("ID:", element.get("id"))
-            print("CLASS:", element.get("class"))
+    if date_elements:
+        for element in date_elements[:20]:
+            print(
+                f"TAG={element.name} "
+                f"ID={element.get('id')} "
+                f"CLASS={element.get('class')}"
+            )
             print("TEXT:", element.get_text(" ", strip=True))
-            print("HTML:")
-            print(element.prettify()[:5000])
-
-    if not found_date_elements:
-        print("No elements with 'date' in id/class/name were found.")
+    else:
+        print("No obvious date elements found.")
 
 
-    # ============================================================
-    # 3. LOOK FOR DATE-RELATED ATTRIBUTES
-    # ============================================================
+    # ------------------------------------------------------------
+    # 3. Look for date-related attributes
+    # ------------------------------------------------------------
 
-    print("\n" + "=" * 80)
-    print("POSSIBLE DATE ATTRIBUTES")
-    print("=" * 80)
+    print("\n=== DATE-RELATED ATTRIBUTES ===")
 
-    found_date_attributes = False
+    attribute_count = 0
 
     for element in soup.find_all(True):
 
         for attribute, value in element.attrs.items():
 
-            attribute_lower = attribute.lower()
+            if "date" not in attribute.lower():
+                continue
 
-            if (
-                "date" in attribute_lower
-                or "date" in str(value).lower()
-            ):
-                found_date_attributes = True
+            print(
+                f"TAG={element.name} "
+                f"ATTRIBUTE={attribute} "
+                f"VALUE={value}"
+            )
 
-                print("\nTAG:", element.name)
-                print("ATTRIBUTE:", attribute)
-                print("VALUE:", value)
-                print("TEXT:", element.get_text(" ", strip=True)[:500])
+            attribute_count += 1
 
-    if not found_date_attributes:
-        print("No obvious date attributes found.")
+            if attribute_count >= 20:
+                break
+
+        if attribute_count >= 20:
+            break
+
+    if attribute_count == 0:
+        print("No date-related attributes found.")
 
 
-    # ============================================================
-    # 4. FIND THE CHIEFS GAME
-    # ============================================================
+    # ------------------------------------------------------------
+    # 4. Find the Chiefs game and show its HTML hierarchy
+    # ------------------------------------------------------------
 
-    print("\n" + "=" * 80)
-    print("HTML AROUND CHIEFS GAME")
-    print("=" * 80)
+    print("\n=== CHIEFS GAME HTML ===")
 
-    chiefs_found = False
+    chiefs_node = None
 
     for text_node in soup.find_all(
         string=lambda s: s and "Chiefs" in s
     ):
-        chiefs_found = True
+        chiefs_node = text_node.parent
+        break
 
-        print("\nFOUND TEXT:")
-        print(repr(text_node.strip()))
+    if chiefs_node is None:
+        print("Could not find 'Chiefs' on the page.")
 
-        element = text_node.parent
+    else:
+        print("Found:", chiefs_node.get_text(" ", strip=True))
 
-        print("\nPARENT ELEMENT:")
-        print(element.prettify())
+        current = chiefs_node
 
-        # Print a few parent levels upward
-        parent = element
+        for level in range(1, 4):
 
-        for level in range(1, 5):
-            parent = parent.parent
+            current = current.parent
 
-            if parent is None:
+            if current is None:
                 break
 
-            print(
-                f"\n--- PARENT LEVEL {level} ---"
-            )
+            print(f"\n--- PARENT LEVEL {level} ---")
 
-            print(parent.prettify()[:10000])
+            # Limit output so GitHub Actions doesn't explode.
+            html = current.prettify()
 
-    if not chiefs_found:
-        print("Could not find 'Chiefs' in the page.")
+            if len(html) > 8000:
+                html = html[:8000] + "\n... [truncated]"
+
+            print(html)
 
 
-    # ============================================================
-    # 5. TABLE DEBUG
-    # ============================================================
+    # ------------------------------------------------------------
+    # 5. Show the schedule rows in a compact format
+    # ------------------------------------------------------------
 
-    print("\n" + "=" * 80)
-    print("ROW DEBUG")
-    print("=" * 80)
+    print("\n=== SCHEDULE ROWS ===")
 
     rows = soup.find_all("tr")
 
+    schedule_row_count = 0
+
     for i, row in enumerate(rows):
 
-        cols = [
-            td.get_text(" ", strip=True)
-            for td in row.find_all(["td", "th"])
+        cells = [
+            cell.get_text(" ", strip=True)
+            for cell in row.find_all(["td", "th"])
         ]
 
-        if cols:
-            print(f"ROW {i}: {cols}")
+        if not cells:
+            continue
 
-
-    # ============================================================
-    # 6. PRINT COMPLETE TABLE HTML FOR SCHEDULE TABLES
-    # ============================================================
-
-    print("\n" + "=" * 80)
-    print("SCHEDULE TABLE HTML")
-    print("=" * 80)
-
-    tables_found = 0
-
-    for table_index, table in enumerate(soup.find_all("table")):
-
-        table_text = table.get_text(" ", strip=True)
-
-        # Only show tables that appear to contain schedule information
+        # Only show rows that look like schedule data.
         schedule_words = [
             "Chiefs",
             "Hurricanes",
-            "HNA",
-            "Away",
-            "Home",
-            "Location",
+            "Kraken",
+            "Rye",
+            "Wolves",
+            "Mavericks",
+            "Invaders",
+            "Growlers",
         ]
 
-        if any(word in table_text for word in schedule_words):
-
-            tables_found += 1
-
-            print(
-                f"\n--- TABLE {table_index} ---"
-            )
-
-            print(table.prettify()[:30000])
-
-    if tables_found == 0:
-        print("No obvious schedule table found.")
-
-
-    # ============================================================
-    # 7. HEADINGS / DIVS / SPANS THAT MAY CONTAIN DATES
-    # ============================================================
-
-    print("\n" + "=" * 80)
-    print("HEADINGS / DIVS / SPANS")
-    print("=" * 80)
-
-    interesting_tags = soup.find_all(
-        ["h1", "h2", "h3", "h4", "h5", "h6", "div", "span"]
-    )
-
-    for element in interesting_tags:
-
-        text = element.get_text(" ", strip=True)
-
-        if not text:
-            continue
-
-        # Print relatively short elements that look potentially useful.
-        if (
-            len(text) < 150
-            and any(
-                word in text.lower()
-                for word in [
-                    "2024",
-                    "2025",
-                    "2026",
-                    "2027",
-                    "january",
-                    "february",
-                    "march",
-                    "april",
-                    "may",
-                    "june",
-                    "july",
-                    "august",
-                    "september",
-                    "october",
-                    "november",
-                    "december",
-                    "sunday",
-                    "monday",
-                    "tuesday",
-                    "wednesday",
-                    "thursday",
-                    "friday",
-                    "saturday",
-                ]
-            )
+        if any(
+            word.lower() in " ".join(cells).lower()
+            for word in schedule_words
         ):
-            print(
-                f"\nTAG: {element.name}"
-            )
-            print(
-                f"ID: {element.get('id')}"
-            )
-            print(
-                f"CLASS: {element.get('class')}"
-            )
-            print(
-                f"TEXT: {text}"
-            )
+            print(f"ROW {i}: {cells}")
+            schedule_row_count += 1
+
+    print(f"\nSchedule rows found: {schedule_row_count}")
 
 
-    # ============================================================
-    # 8. SEARCH RAW HTML FOR COMMON DATE FORMATS
-    # ============================================================
+    # ------------------------------------------------------------
+    # 6. Search raw HTML for years/months
+    # ------------------------------------------------------------
 
-    print("\n" + "=" * 80)
-    print("RAW HTML DATE SEARCH")
-    print("=" * 80)
+    print("\n=== DATE SEARCH IN RAW HTML ===")
 
     raw_html = response.text
 
-    date_keywords = [
+    date_terms = [
         "2024",
         "2025",
         "2026",
@@ -319,43 +237,89 @@ def main():
         "December",
     ]
 
-    for keyword in date_keywords:
+    found_terms = set()
 
-        position = raw_html.lower().find(keyword.lower())
+    for term in date_terms:
 
-        if position != -1:
+        position = raw_html.lower().find(term.lower())
 
-            print(
-                f"\nFOUND '{keyword}' at character {position}"
-            )
+        if position == -1:
+            continue
 
-            start = max(0, position - 500)
-            end = min(
-                len(raw_html),
-                position + 1000
-            )
+        # Avoid printing the same area repeatedly.
+        context_start = max(0, position - 250)
+        context_end = min(
+            len(raw_html),
+            position + 500
+        )
 
-            print(
-                raw_html[start:end]
-            )
+        context = raw_html[context_start:context_end]
+
+        # Strip excessive whitespace.
+        context = " ".join(context.split())
+
+        print(f"\nFound '{term}':")
+        print(context[:750])
+
+        found_terms.add(term)
+
+        # We only need a few examples.
+        if len(found_terms) >= 8:
+            break
 
 
-    # ============================================================
-    # 9. PAGE TEXT
-    # ============================================================
+    # ------------------------------------------------------------
+    # 7. Important: check for JavaScript date data
+    # ------------------------------------------------------------
 
-    print("\n" + "=" * 80)
-    print("PAGE TEXT")
-    print("=" * 80)
+    print("\n=== POSSIBLE JAVASCRIPT DATE DATA ===")
 
-    print(
-        soup.get_text("\n", strip=True)
+    script_text = "\n".join(
+        script.get_text(" ", strip=True)
+        for script in soup.find_all("script")
     )
 
-    print("\n" + "=" * 80)
-    print("END DEBUG")
-    print("=" * 80)
+    javascript_terms = [
+        "schedule",
+        "gameDate",
+        "game_date",
+        "date",
+        "startDate",
+        "start_date",
+    ]
+
+    found_js = False
+
+    for term in javascript_terms:
+
+        position = script_text.lower().find(term.lower())
+
+        if position == -1:
+            continue
+
+        start = max(0, position - 300)
+        end = min(
+            len(script_text),
+            position + 700
+        )
+
+        print(f"\nFound JavaScript term '{term}':")
+        print(script_text[start:end])
+
+        found_js = True
+
+    if not found_js:
+        print("No obvious JavaScript date data found.")
+
+
+    # ------------------------------------------------------------
+    # DONE
+    # ------------------------------------------------------------
+
+    print("\n=== DEBUG COMPLETE ===")
+    print("The next step is to identify how HNA stores the schedule date.")
 
 
 if __name__ == "__main__":
     main()
+```
