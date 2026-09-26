@@ -2,11 +2,28 @@
   "last_game": null,
   "upcoming_games": [
     {
-      "date": "Sep. 29, 2026",
+      "date": "",
       "time": "10:20 PM",
-      "home_team": "",
-      "away_team": "Kraken Beers KRA",
-      "location": "Reapers REA F"
+      "raw_columns": [
+        "Kraken Beers Record: 1w-0l-0t-0otl 2pts Next: Sep. 29, 2026 at 10:20 PM away at Reapers Last: 5-4 Win vs Hurricanes BOX"
+      ]
+    },
+    {
+      "date": "",
+      "time": "10:20 PM",
+      "raw_columns": [
+        "10:20 PM",
+        "14",
+        "Kraken Beers KRA F",
+        "",
+        "Reapers REA F",
+        "",
+        "WSA USA Rink",
+        "",
+        "",
+        "",
+        "RS"
+      ]
     }
   ]
 }
