@@ -1,111 +1,148 @@
 import json
 import re
-from bs4 import BeautifulSoup
 import requests
+from bs4 import BeautifulSoup
 
-URL = 'https://www.hna.com/leagues/schedules.cfm?clientID=2296&leagueID=5717&teamID=683136&printPage=0'
-
-headers = {
-    'User-Agent': (
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) '
-        'Chrome/124.0.0.0 Safari/537.36'
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,"
+        " like Gecko) Chrome/120.0.0.0 Safari/537.36"
     )
 }
 
+# Base parameters for Kraken Beers schedule querying
+CLIENT_ID = "2296"
+LEAGUE_ID = "5717"
+TEAM_ID = "683136"
+
+YEARS = [2026, 2027]
+MONTHS = list(range(1, 13))  # Months 1 through 12
+
+
 def clean_team_name(name):
-    """Generically strips team code suffixes (e.g. 'Kraken Beers KRA F' -> 'Kraken Beers')."""
-    if not name:
-        return ""
-    cleaned = re.sub(r'\b[A-Z]{2,5}\s+[A-Z0-9]\b$', '', name.strip(), flags=re.IGNORECASE)
-    cleaned = re.sub(r'\b[A-Z]{3,5}\b$', '', cleaned.strip(), flags=re.IGNORECASE)
-    cleaned = re.sub(r'^\d+\s*(vs\.?|at|@)?\s*', '', cleaned, flags=re.IGNORECASE)
-    return re.sub(r'\s+', ' ', cleaned).strip()
+  if not name:
+    return ""
+  cleaned = re.sub(
+      r"\b[A-Z]{2,5}\s+[A-Z0-9]\b$", "", name.strip(), flags=re.IGNORECASE
+  )
+  cleaned = re.sub(
+      r"\b[A-Z]{3,5}\b$", "", cleaned.strip(), flags=re.IGNORECASE
+  )
+  cleaned = re.sub(
+      r"^\d+\s*(vs\.?|at|@)?\s*", "", cleaned, flags=re.IGNORECASE
+  )
+  return re.sub(r"\s+", " ", cleaned).strip()
+
 
 def extract_hna_date(text):
-    """
-    Extracts dates formatted like 'Wed Sep 16, 2026', 'Wed Sep. 16, 2026',
-    'Sep. 16, 2026', or 'Sep 16, 2026'.
-    """
-    patterns = [
-        # With day of week: "Wed Sep. 16, 2026" or "Wed Sep 16, 2026"
-        r'\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+[A-Za-z]{3,4}\.?\s+\d{1,2}(?:,?\s*\d{4})?\b',
-        # Without day of week: "Sep. 16, 2026" or "Sep 16, 2026"
-        r'\b[A-Za-z]{3,4}\.?\s+\d{1,2},?\s+\d{4}\b'
-    ]
-    
-    for pat in patterns:
-        match = re.search(pat, text, re.IGNORECASE)
-        if match:
-            return match.group(0).strip()
-            
-    return ""
+  patterns = [
+      (
+          r"\b(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)[a-z]*,?\s+[A-Za-z]{3,4}\.?\s+\d{1,2}(?:,?\s*\d{4})?\b"
+      ),
+      r"\b[A-Za-z]{3,4}\.?\s+\d{1,2},?\s+\d{4}\b",
+  ]
+  for pat in patterns:
+    match = re.search(pat, text, re.IGNORECASE)
+    if match:
+      return match.group(0).strip()
+  return ""
 
-def run_scraper():
-    print("Fetching schedule from HNA...")
-    res = requests.get(URL, headers=headers)
-    soup = BeautifulSoup(res.text, 'html.parser')
 
-    upcoming_games = []
-    rows = soup.find_all('tr')
+def scrape_schedule():
+  print("Fetching schedule across 2026 and 2027...")
+  schedule_data = {"last_game": None, "upcoming_games": []}
+  seen_games = set()  # Deduplication set
 
-    current_date = ""
+  for year in YEARS:
+    for month in MONTHS:
+      url = f"https://www.hna.com/leagues/schedules.cfm?clientID={CLIENT_ID}&leagueID={LEAGUE_ID}&schedType=main&printPage=0&monthID={month}&yearID={year}&selectedTeamID={TEAM_ID}&selectedOfficialID=0&gameType="
 
-    for row in rows:
-        cols = [re.sub(r'\s+', ' ', td.text).strip() for td in row.find_all(['td', 'th'])]
-        
-        if not cols:
+      try:
+        res = requests.get(url, headers=HEADERS, timeout=10)
+        if res.status_code != 200:
+          continue
+
+        soup = BeautifulSoup(res.text, "html.parser")
+        rows = soup.find_all("tr")
+        current_date = ""
+
+        for row in rows:
+          cols = [
+              re.sub(r"\s+", " ", td.text).strip()
+              for td in row.find_all(["td", "th"])
+          ]
+          if not cols:
             continue
 
-        raw_row_text = ' '.join(cols).strip()
-        row_upper = raw_row_text.upper()
+          raw_row_text = " ".join(cols).strip()
+          row_upper = raw_row_text.upper()
 
-        # Check row text for date pattern (e.g., Sep. 16, 2026 or Wed Sep 16, 2026)
-        found_date = extract_hna_date(raw_row_text)
-        if found_date:
+          found_date = extract_hna_date(raw_row_text)
+          if found_date:
             current_date = found_date
 
-        # Skip main table headers, summary rows, or completed game markers
-        if any(kw in row_upper for kw in ['RESULT', 'GAME #', 'VISITOR', 'FINAL', 'RECORD:', 'LAST:']):
+          # Filter out header/summary noise
+          if any(
+              kw in row_upper
+              for kw in [
+                  "RESULT",
+                  "GAME #",
+                  "VISITOR",
+                  "FINAL",
+                  "RECORD:",
+                  "LAST:",
+              ]
+          ):
             continue
 
-        # Look for actual time string (e.g., "10:05 PM") in table columns
-        time_str = ""
-        for cell in cols:
-            # Valid game times are short strings containing AM/PM (e.g. "10:05 PM")
-            if ('PM' in cell.upper() or 'AM' in cell.upper()) and len(cell) < 15:
-                time_str = cell
-                break
+          # Match game rows
+          if "KRAKEN" in row_upper or "VS" in row_upper or "AT" in row_upper:
+            time_str = next(
+                (c for c in cols if "PM" in c.upper() or "AM" in c.upper()), ""
+            )
+            teams = [
+                c for c in cols if " VS " in c.upper() or " AT " in c.upper()
+            ]
 
-        if time_str:
-            raw_team_1 = cols[2] if len(cols) > 2 else ""
-            raw_team_2 = cols[4] if len(cols) > 4 else (cols[3] if len(cols) > 3 else "")
+            matchup = teams[0] if teams else "Kraken Beers vs Opponent"
+            location = cols[-1] if len(cols) > 3 else "Local Rink"
 
-            team_1_clean = clean_team_name(raw_team_1)
-            team_2_clean = clean_team_name(raw_team_2)
+            if " VS " in matchup.upper():
+              parts = re.split(r"\s+VS\s+", matchup, flags=re.IGNORECASE)
+              home, away = parts[0], parts[1]
+            elif " AT " in matchup.upper():
+              parts = re.split(r"\s+AT\s+", matchup, flags=re.IGNORECASE)
+              away, home = parts[0], parts[1]
+            else:
+              home, away = "Kraken Beers", "Opponent"
 
-            location = "Playland"
-            for c in cols:
-                if any(rink in c.lower() for rink in ['playland', 'ice', 'arena', 'rink', 'center', 'ctr']):
-                    location = c
-                    break
-
-            upcoming_games.append({
-                "date": current_date,
+            game_obj = {
+                "date": current_date or "TBD",
                 "time": time_str,
-                "home_team": team_2_clean,
-                "away_team": team_1_clean,
-                "location": location
-            })
+                "home_team": clean_team_name(home),
+                "away_team": clean_team_name(away),
+                "location": location,
+            }
 
-    output = {
-        "upcoming_games": upcoming_games
-    }
+            # Create unique fingerprint to prevent duplicates across month queries
+            game_signature = (
+                f"{game_obj['date']}_{game_obj['time']}_{game_obj['home_team']}"
+            )
+            if game_signature not in seen_games:
+              seen_games.add(game_signature)
+              schedule_data["upcoming_games"].append(game_obj)
 
-    with open('schedule.json', 'w') as f:
-        json.dump(output, f, indent=2)
+      except Exception as e:
+        print(f"Skipping month {month}/{year} due to error: {e}")
 
-    print(f"Done! Saved {len(upcoming_games)} upcoming game(s).")
+  with open("schedule.json", "w") as f:
+    json.dump(schedule_data, f, indent=2)
 
-if __name__ == '__main__':
-    run_scraper()
+  print(
+      f"Schedule complete! Total unique games saved:"
+      f" {len(schedule_data['upcoming_games'])}"
+  )
+
+
+if __name__ == "__main__":
+  scrape_schedule()
