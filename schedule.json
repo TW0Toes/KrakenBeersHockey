@@ -1,13 +1,6 @@
 {
   "upcoming_games": [
     {
-      "date": "Wednesday, October 7, 2026",
-      "time": "10:05 PM",
-      "away_team": "Vipers F",
-      "home_team": "Kraken Beers",
-      "location": "Playland"
-    },
-    {
       "date": "Tuesday, October 13, 2026",
       "time": "10:35 PM",
       "away_team": "Kraken Beers",
@@ -33,6 +26,13 @@
       "time": "9:05 PM",
       "away_team": "Kraken Beers",
       "home_team": "Hurricanes",
+      "location": "WSA USA Rink"
+    },
+    {
+      "date": "Friday, November 6, 2026",
+      "time": "9:50 PM",
+      "away_team": "Reapers",
+      "home_team": "Kraken Beers",
       "location": "WSA USA Rink"
     }
   ]
