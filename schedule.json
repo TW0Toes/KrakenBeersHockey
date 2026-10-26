@@ -27,6 +27,13 @@
       "away_team": "Whiskey Rebellion",
       "home_team": "Kraken Beers",
       "location": "Playland"
+    },
+    {
+      "date": "Tuesday, December 1, 2026",
+      "time": "9:10 PM",
+      "away_team": "Kraken Beers",
+      "home_team": "Clusterpucks",
+      "location": "WSA USA Rink"
     }
   ]
 }
